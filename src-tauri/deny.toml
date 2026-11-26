@@ -20,27 +20,11 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 # instead of being kept as history.
 yanked = "deny"
 ignore = [
-    # zip 4.6.1 (via tauri-plugin-updater): ZipArchive::extract / ZipStreamReader::extract
-    # keep SUID/SGID bits and follow symlinks (fixed in zip >= 9). Not reachable from our
-    # code: it never calls extract(), it only reads and writes archives with
-    # ZipArchive::new / ZipWriter and unpacks user archives with its own code
-    # (archive/extract.rs). The plugin extracts only update packages whose signature was
-    # verified first. Remove these entries when the plugin moves to zip >= 9.
-    { id = "RUSTSEC-2026-0367", reason = "zip 4.6.1 extract(): SUID/SGID and symlinks; extract() is never called by us, updater verifies the signature first" },
-    { id = "RUSTSEC-2026-0368", reason = "zip 4.6.1 extract() family; same reasoning as RUSTSEC-2026-0367" },
-    { id = "RUSTSEC-2026-0369", reason = "zip 4.6.1 extract() family; same reasoning as RUSTSEC-2026-0367" },
-    # Symlink entry with a large declared size aborts extract().
-    { id = "RUSTSEC-2026-0429", reason = "zip 4.6.1 extract() aborts on a symlink entry with a large size; only signature-verified update packages are extracted" },
-    # Two more zip 4.6.1 advisories, again only via tauri-plugin-updater (no safe upgrade, the
-    # plugin pins zip 4). RUSTSEC-2026-0545 (AES entries returned without checking the
-    # authentication code) needs zip's "aes-crypto" feature, which this build does not enable.
-    # RUSTSEC-2026-0548 (ZipStreamReader trusts local-header names) affects ZipStreamReader
-    # only; the plugin uses ZipArchive::extract on signature-verified update packages, and our
-    # own code is on zip 9 and uses neither ZipStreamReader nor decryption.
-    { id = "RUSTSEC-2026-0545", reason = "zip 4.6.1 AES entries without authentication check; needs the aes-crypto feature, which this build does not enable" },
-    { id = "RUSTSEC-2026-0548", reason = "zip 4.6.1 ZipStreamReader trusts local-header names; only ZipArchive::extract on signature-verified update packages is used" },
     # chrono is reported as unmaintained (no known vulnerability). It is a direct dependency
-    # for date formatting; moving to jiff or time is planned separately.
+    # of katalog-core, katalog-server and the desktop app (about 115 uses in 47 files), so a
+    # move to jiff or time is a separate task. Review by 2027-03-31: replace chrono or renew
+    # this entry with a fresh reason; remove it as soon as chrono leaves the tree.
+    # (The zip 4.x entries RUSTSEC-2026-0545/0548 are gone: tauri-plugin-updater 2.14.1 uses zip 9.)
     { id = "RUSTSEC-2026-0543", reason = "chrono reported as unmaintained, no known vulnerability; direct dependency for date formatting, replacement planned separately" },
 ]
 

@@ -82,3 +82,12 @@ it('includes native summaries and excludes closed details, hidden ancestors and 
   fireEvent.keyDown(first, { key: 'Tab', shiftKey: true }); expect(screen.getByText('Expanded content')).toHaveFocus();
   fireEvent.keyDown(document.activeElement!, { key: 'Tab' }); expect(first).toHaveFocus();
 });
+it('lets a script click its own download anchor through, but still blocks background links', () => {
+  const download = document.createElement('a'); download.setAttribute('download', 'x.stl'); download.href = '#d';
+  const plain = document.createElement('a'); plain.href = '#p';
+  document.body.append(download, plain);
+  render(<Dialog />);
+  const down = fireEvent.click(download); const blocked = fireEvent.click(plain);
+  expect(down).toBe(true); expect(blocked).toBe(false);
+  download.remove(); plain.remove();
+});

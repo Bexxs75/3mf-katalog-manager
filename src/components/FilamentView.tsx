@@ -79,7 +79,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
   const locked = lockedKind(usePrintTechnology().technology);
   const kind = locked ?? chosenKind;
   // Hides the hint banner as soon as the confirmation dialog is open.
-  const [jobsOpen, setJobsOpen] = useState(!web && (printerContext?.reviewJobs ?? false));
+  const [jobsOpen, setJobsOpen] = useState(printerContext?.reviewJobs ?? false);
   useEffect(() => {
     const target = printers.printers.find(p => p.id === printerContext?.printerId);
     if (target) setKindState(target.kind);
@@ -336,7 +336,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
           </div>
         )}
 
-        {!web && printerLink.enabled && !jobsOpen && (
+        {printerLink.enabled && !jobsOpen && (
           <PrinterJobsBanner jobs={printerLink.jobs} onReview={() => setJobsOpen(true)} />
         )}
 
@@ -558,7 +558,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
         defaultKind={kind}
       />
 
-      {!web && <PrinterJobsDialog
+      <PrinterJobsDialog
         open={jobsOpen && printerLink.jobs.length > 0}
         jobs={printerLink.jobs}
         spools={filamentSpools}
@@ -569,7 +569,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
           refresh();
           onCatalogChanged?.();
         }}
-      />}
+      />
     </div>
   );
 }

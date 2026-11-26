@@ -396,3 +396,37 @@ mod print_info {
         assert_eq!(state(&c2, id2), None, "non-3MF files get no print data row");
     }
 }
+
+#[test]
+fn web_rescan_takes_step_metadata_only_from_the_supplied_reader() {
+    let root = unique_test_dir("rescan_step_reader");
+    let step = root.join("a.step");
+    std::fs::write(&step, b"ISO-10303-21;").unwrap();
+    let (mut c, id) = catalog(&step);
+    let roots = [root.clone()];
+    let seen = std::cell::Cell::new(0u64);
+    let reader = |file: &std::fs::File| -> Result<StepMetadata> {
+        // The reader gets the admitted handle, not a path it could resolve itself.
+        seen.set(file.metadata().unwrap().len());
+        Ok((Some([10.0, 20.0, 30.0]), Some(6.0), Some(2)))
+    };
+    let prepared = prepare_web_rescan_with(&c, id, &roots, limits(), Some(&reader)).unwrap();
+    assert_eq!(seen.get(), 13);
+    let dto = apply_web_rescan(&mut c, prepared).unwrap();
+    assert_eq!(dto.dimensions_mm, Some([10.0, 20.0, 30.0]));
+    assert_eq!(dto.object_count, Some(2));
+    assert!(dto.content_hash.is_some());
+
+    // A reader failure is the rescan's failure; the stored record stays untouched.
+    let failing = |_: &std::fs::File| -> Result<StepMetadata> { Err(RescanError::Invalid) };
+    assert_eq!(prepare_web_rescan_with(&c, id, &roots, limits(), Some(&failing)).err(), Some(RescanError::Invalid));
+    assert_eq!(db::get_file(&c, id).unwrap().unwrap().object_count, Some(2));
+
+    // Other formats never reach the reader.
+    let obj = root.join("a.obj");
+    std::fs::write(&obj, TRIANGLE_OBJ).unwrap();
+    let (mut c2, id2) = catalog(&obj);
+    let untouched = |_: &std::fs::File| -> Result<StepMetadata> { panic!("not a STEP file") };
+    let prepared = prepare_web_rescan_with(&c2, id2, &roots, limits(), Some(&untouched)).unwrap();
+    assert!(apply_web_rescan(&mut c2, prepared).unwrap().dimensions_mm.is_some());
+}

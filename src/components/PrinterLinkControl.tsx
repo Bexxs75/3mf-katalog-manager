@@ -18,7 +18,15 @@ export function PrinterLinkControl({ link }: Props) {
     setActionError(null);
     Promise.resolve(link.setEnabled(on)).catch((e) => setActionError(toAppError(e)));
   };
-  if (import.meta.env.VITE_TARGET === 'web') return null;
+  const web = import.meta.env.VITE_TARGET === 'web';
+  if (link.unavailable) {
+    return (
+      <div role="status" className="text-small text-[var(--ink-2)] max-[1023px]:group-data-[collapsed=true]:hidden">
+        <b>{t('pmWebUnavailableTitle')}</b>
+        <p className="text-caption text-[var(--ink-3)]">{t('pmWebUnavailableBody')}</p>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2.5 [&>button[aria-checked=true]]:bg-[var(--good)] [&>button>span]:bg-[var(--panel)] max-[1023px]:group-data-[collapsed=true]:justify-center">
@@ -31,7 +39,7 @@ export function PrinterLinkControl({ link }: Props) {
       <div className="max-[1023px]:group-data-[collapsed=true]:hidden">
         <button type="button" className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-small text-[var(--ink-2)] underline underline-offset-2 focus-visible:outline-2"
           aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{t('pmWhatHappens')}</button>
-        {expanded && <p className="mt-2 text-small text-[var(--ink-2)]">{t('printerLinkDescription')}</p>}
+        {expanded && <p className="mt-2 text-small text-[var(--ink-2)]">{t(web ? 'pmWebLinkDescription' : 'printerLinkDescription')}</p>}
       </div>
       {actionError && (
         <div role="alert" className="text-small text-[var(--crit)]">

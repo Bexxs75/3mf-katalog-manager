@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { ContextMenu, type BundleMenuActions } from './ContextMenu';
 import { BundleContextMenu } from './BundleContextMenu';
@@ -72,6 +72,16 @@ describe('bundle card context menu', () => {
     expect(screen.getByRole('button', { name: de.bundleDissolve })).toBeInTheDocument();
   });
 
+  it('offers "Move to" for the whole bundle only when moving is possible', () => {
+    const onMove = vi.fn();
+    menu();
+    expect(screen.queryByRole('button', { name: de.moveContextLabel })).toBeNull();
+    cleanup();
+    menu({ onMove } as never);
+    fireEvent.click(screen.getByRole('button', { name: de.moveContextLabel }));
+    expect(onMove).toHaveBeenCalledOnce();
+  });
+
   it('runs the action of the clicked entry', () => {
     menu();
     fireEvent.click(screen.getByRole('button', { name: de.bundleDissolve }));
@@ -121,12 +131,12 @@ describe('selection bar, bundle entries', () => {
     expect(a.onDissolve).toHaveBeenCalledOnce();
   });
 
-  it('hides what does not apply and disables "Bundle …" with the reason when fewer than two models are selected', () => {
+  it('hides what does not apply and disables "Bundle …" with the reason when no model is selected', () => {
     bar(actions({ canCreate: false, canAddTo: false, canRemove: false, canDissolve: false, canEdit: false }));
     const menu = openBulkMore('Bündel');
     const make = within(menu).getByRole('menuitem', { name: de.bundleMake });
     expect(make).toBeDisabled();
-    expect(make).toHaveAttribute('title', de.bundleDlgNeedTwo);
+    expect(make).toHaveAttribute('title', de.bundleDlgNeedOne);
     for (const label of [de.bundleAddTo, de.bundleEdit, de.bundleRemoveFrom, de.bundleDissolve]) {
       expect(within(menu).queryByRole('menuitem', { name: label })).toBeNull();
     }

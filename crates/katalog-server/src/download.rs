@@ -56,7 +56,9 @@ pub async fn download(
     id: &str,
     headers: &HeaderMap,
     slots: Arc<Semaphore>,
+    barrier: &crate::barrier::CatalogBarrier,
 ) -> Response {
+    let catalog_guard = match barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     let Ok(numeric_id) = id.parse::<i64>() else {
         return error_coded(400, ErrorCode::ReqInvalidIds, &[]);
     };
@@ -126,19 +128,21 @@ pub async fn download(
             opened.modified().ok().and_then(http_date),
             name,
             permit,
+            catalog_guard,
         ))
     })
     .await;
-    let (file, len, modified, name, permit) = match opened {
+    let (file, len, modified, name, permit, catalog_guard) = match opened {
         Ok(Ok(v)) => v,
         Ok(Err(e)) => return download_failure(e),
         Err(_) => return error_coded(500, ErrorCode::WebServerInternal, &[]),
     };
-    serve(file, len, modified, &name, "application/octet-stream", permit, headers)
+    serve(file, len, modified, &name, "application/octet-stream", permit, catalog_guard, headers)
 }
 
 /// Streams an opened regular file with range support. The type is chosen by the caller,
 /// never sniffed; the file always goes out as an attachment.
+#[allow(clippy::too_many_arguments)]
 fn serve(
     mut file: std::fs::File,
     len: u64,
@@ -146,6 +150,7 @@ fn serve(
     name: &str,
     content_type: &str,
     permit: OwnedSemaphorePermit,
+    catalog_guard: crate::barrier::Guard,
     headers: &HeaderMap,
 ) -> Response {
     // No entity tag is emitted. Only our exact Last-Modified date can match;
@@ -179,11 +184,7 @@ fn serve(
     if start != 0 && file.seek(SeekFrom::Start(start)).is_err() {
         return error_coded(500, ErrorCode::WebServerInternal, &[]);
     }
-    let body = DownloadBody {
-        file: tokio::fs::File::from_std(file),
-        remaining: count,
-        permit: Some(permit),
-    };
+    let body = DownloadBody::new(tokio::fs::File::from_std(file), count, permit).with_guard(catalog_guard);
     let mut response = Body::new(body).into_response();
     if range.is_some() {
         *response.status_mut() = StatusCode::PARTIAL_CONTENT;
@@ -210,6 +211,93 @@ fn serve(
     response
 }
 
+/// Largest STL the web builds in memory: 1M triangles are 50 MB binary (ASCII about 4-5 times that), and up to four converters can run.
+const WEB_STL_MAX_TRIANGLES: u64 = 1_000_000;
+/// ASCII is about five times larger per triangle, so it gets a quarter of the limit (same memory ceiling).
+const WEB_STL_ASCII_MAX_TRIANGLES: u64 = 250_000;
+
+fn stl_failure(error: katalog_core::stl::StlWriteError) -> Response {
+    use katalog_core::stl::StlWriteError as E;
+    match error {
+        E::NothingToExport => error_coded(422, ErrorCode::StlNothingToExport, &[]),
+        E::PartOutOfRange { .. } => error_coded(400, ErrorCode::ReqInvalidArguments, &[]),
+        E::TooManyTriangles { count, max } => error_coded(413, ErrorCode::StlTooLarge, &[count.to_string(), max.to_string()]),
+        E::SourceChanged => error_coded(409, ErrorCode::StlSourceChanged, &[]),
+        E::InvalidIndex | E::NonFinite => error_coded(422, ErrorCode::StlSourceUnreadable, &[]),
+        E::TargetIsSource | E::TargetExists | E::Io(_) => error_coded(500, ErrorCode::WebServerInternal, &[]),
+    }
+}
+
+/// "Save as STL" for a 3MF or OBJ of the catalog: the same core writer as the desktop app
+/// (binary STL, or ASCII on request), built in memory under the parser gate and sent as an attachment. `plate`
+/// limits the result to one plate of a 3MF. STEP is not offered (no CAD kernel in the web build).
+pub async fn stl(gate: &Arc<crate::invoke::GeometryGate>, db_path: PathBuf, roots: Vec<PathBuf>, id: &str, plate: Option<u32>, format: katalog_core::stl::StlFormat) -> Response {
+    use katalog_core::{db::models::FileType, stl::{self, SourceStamp, StlScope}};
+    let catalog_guard = match gate.barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
+    let Ok(numeric_id) = id.parse::<i64>() else {
+        return error_coded(400, ErrorCode::ReqInvalidIds, &[]);
+    };
+    let permits = match gate.acquire().await {
+        Ok(p) => p,
+        Err(e) => return *e,
+    };
+    let result = tokio::task::spawn_blocking(move || -> Result<(Vec<u8>, String), Box<Response>> {
+        // The permits and the barrier guard belong to this closure: cancelling the request does not
+        // release them while the parser is still running.
+        let _held = (permits, catalog_guard);
+        let conn = db::open_read_only(&db_path).map_err(|e| Box::new(download_failure(ReadError::from(e))))?;
+        let file = db::get_file(&conn, numeric_id)
+            .map_err(|e| Box::new(download_failure(ReadError::from(e))))?
+            .ok_or_else(|| Box::new(error_coded(404, ErrorCode::FileNotFound, &[])))?;
+        drop(conn);
+        match file.file_type {
+            FileType::ThreeMf | FileType::Obj => {}
+            FileType::Stl => return Err(Box::new(error_coded(422, ErrorCode::StlSourceIsStl, &[]))),
+            FileType::Stp => return Err(Box::new(error_coded(422, ErrorCode::StlStepUnavailable, &[]))),
+            _ => return Err(Box::new(error_coded(422, ErrorCode::StlSourceUnreadable, &[]))),
+        }
+        let source = PathBuf::from(file.current_path());
+        let stamp = SourceStamp::of(&source).map_err(|e| match e.kind() {
+            io::ErrorKind::NotFound => Box::new(error_coded(404, ErrorCode::FileNotFound, &[])),
+            _ => Box::new(error_coded(422, ErrorCode::StlSourceUnreadable, &[])),
+        })?;
+        let meshes = read::load_render_meshes_with_limits(&source, Some(&roots), Some(katalog_core::import::files::WebImportLimits::default()))
+            .map_err(|e| Box::new(download_failure(e)))?;
+        stamp.ensure_unchanged(&source).map_err(|e| Box::new(stl_failure(e)))?;
+        let selected = stl::select_meshes(&meshes, plate.map_or(StlScope::All, StlScope::Plate)).map_err(|e| Box::new(stl_failure(e)))?;
+        let mut bytes = Vec::new();
+        let limit = match format {
+            stl::StlFormat::Binary => WEB_STL_MAX_TRIANGLES,
+            stl::StlFormat::Ascii => WEB_STL_ASCII_MAX_TRIANGLES,
+        };
+        stl::write_stl_as(&mut bytes, &selected, format, limit).map_err(|e| Box::new(stl_failure(e)))?;
+        let stem = std::path::Path::new(&file.name).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into());
+        let name = match plate {
+            Some(number) => format!("{stem}_Platte{number}.stl"),
+            None => format!("{stem}.stl"),
+        };
+        Ok((bytes, name))
+    })
+    .await;
+    match result {
+        Ok(Ok((bytes, name))) => {
+            let length = bytes.len().to_string();
+            let mut response = Body::from(bytes).into_response();
+            for (key, value) in [
+                ("content-type", "application/octet-stream".to_owned()),
+                ("content-length", length),
+                ("content-disposition", disposition(&name)),
+                ("cache-control", "no-store".to_owned()),
+            ] {
+                response.headers_mut().insert(key, value.parse().unwrap());
+            }
+            response
+        }
+        Ok(Err(response)) => *response,
+        Err(_) => error_coded(500, ErrorCode::WebServerInternal, &[]),
+    }
+}
+
 /// One companion file of a model, by its row id. The path comes from the catalog row
 /// only; the strict open (no links, one name, inside a root) is `open_for_web`.
 pub async fn companion(
@@ -219,7 +307,9 @@ pub async fn companion(
     id: &str,
     headers: &HeaderMap,
     slots: Arc<Semaphore>,
+    barrier: &crate::barrier::CatalogBarrier,
 ) -> Response {
+    let catalog_guard = match barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     let Ok(numeric_id) = id.parse::<i64>() else {
         return error_coded(400, ErrorCode::ReqInvalidIds, &[]);
     };
@@ -247,15 +337,15 @@ pub async fn companion(
         file.seek(SeekFrom::Start(0)).map_err(io_failure)?;
         let meta = file.metadata().map_err(io_failure)?;
         let content_type = katalog_core::companion_read::download_content_type(kind, &row.name);
-        Ok::<_, ReadError>((file, meta.len(), meta.modified().ok().and_then(http_date), row.name, content_type, permit))
+        Ok::<_, ReadError>((file, meta.len(), meta.modified().ok().and_then(http_date), row.name, content_type, permit, catalog_guard))
     })
     .await;
-    let (file, len, modified, name, content_type, permit) = match opened {
+    let (file, len, modified, name, content_type, permit, catalog_guard) = match opened {
         Ok(Ok(v)) => v,
         Ok(Err(e)) => return download_failure(e),
         Err(_) => return error_coded(500, ErrorCode::WebServerInternal, &[]),
     };
-    serve(file, len, modified, &name, content_type, permit, headers)
+    serve(file, len, modified, &name, content_type, permit, catalog_guard, headers)
 }
 
 pub(crate) fn byte_range(value: &str, len: u64) -> Result<Option<(u64, u64)>, ()> {
@@ -409,14 +499,21 @@ pub(crate) fn disposition(name: &str) -> String {
 }
 
 pub(crate) struct DownloadBody {
-    file: tokio::fs::File,
+    file: Option<tokio::fs::File>,
     remaining: u64,
     permit: Option<OwnedSemaphorePermit>,
+    catalog_guard: Option<crate::barrier::Guard>,
+    cancellation: Option<Pin<Box<dyn std::future::Future<Output = ()> + Send>>>,
 }
 impl DownloadBody {
+    pub(crate) fn with_guard(mut self, guard: crate::barrier::Guard) -> Self {
+        self.cancellation = Some(guard.stream_cancelled());
+        self.catalog_guard = Some(guard);
+        self
+    }
     /// Streams exactly `remaining` bytes and keeps `permit` until the stream ends or is dropped.
     pub(crate) fn new(file: tokio::fs::File, remaining: u64, permit: OwnedSemaphorePermit) -> Self {
-        Self { file, remaining, permit: Some(permit) }
+        Self { file: Some(file), remaining, permit: Some(permit), catalog_guard: None, cancellation: None }
     }
 }
 impl hyper::body::Body for DownloadBody {
@@ -426,14 +523,25 @@ impl hyper::body::Body for DownloadBody {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<hyper::body::Frame<Bytes>, io::Error>>> {
-        if self.remaining == 0 {
+        if self.cancellation.as_mut().is_some_and(|cancel| cancel.as_mut().poll(cx).is_ready()) {
+            self.remaining = 0;
+            self.file.take();
+            self.cancellation = None;
             self.permit.take();
+            self.catalog_guard.take();
+            return Poll::Ready(Some(Err(io::Error::new(io::ErrorKind::TimedOut, "Catalog maintenance stream deadline"))));
+        }
+        if self.remaining == 0 {
+            self.file.take();
+            self.cancellation = None;
+            self.permit.take();
+            self.catalog_guard.take();
             return Poll::Ready(None);
         }
         let mut buffer = [0; 64 * 1024];
         let limit = self.remaining.min(buffer.len() as u64) as usize;
         let mut read = ReadBuf::new(&mut buffer[..limit]);
-        match Pin::new(&mut self.file).poll_read(cx, &mut read) {
+        match Pin::new(self.file.as_mut().expect("active stream has a file")).poll_read(cx, &mut read) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(result) => {
                 let result = result.and_then(|()| {
@@ -452,7 +560,10 @@ impl hyper::body::Body for DownloadBody {
                     self.remaining = 0;
                 }
                 if self.remaining == 0 {
+                    self.file.take();
+                    self.cancellation = None;
                     self.permit.take();
+                    self.catalog_guard.take();
                 }
                 Poll::Ready(Some(result))
             }

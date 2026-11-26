@@ -303,6 +303,11 @@ describe('SettingsPanel content', () => {
     expect(screen.queryByRole('button', { name: de.settingsGoToHandover })).toBeNull();
   });
 
+  it('does not offer the web backup restore on the desktop, which has its own import', () => {
+    renderPanel({ initialTab: 'maintenance' });
+    expect(screen.queryByRole('button', { name: de.bkrOpen })).toBeNull();
+  });
+
   it('starts on the tab given by the app and reports every change of tab', () => {
     const onTabChange = vi.fn();
     renderPanel({ initialTab: 'maintenance', onTabChange });
@@ -775,12 +780,12 @@ describe('settings search, session changes and defaults', () => {
     panel.rerender({ themeSetting: 'dark', singleKeyShortcuts: false });
     expect(screen.getByRole('img', { name: `${de.themeLegend}: ${de.settingsChanged}` })).toBeVisible();
     expect(tab('Allgemein (2)')).toBeVisible();
-    expect(screen.getByText('2 geändert')).toBeVisible();
+    expect(screen.getByText('2 seit dem Öffnen geändert')).toBeVisible();
     panel.unmountAll();
     const reopened = renderPanel({ themeSetting: 'dark' });
-    expect(screen.getByText('1 geändert')).toBeVisible();
+    expect(screen.getByText('1 seit dem Öffnen geändert')).toBeVisible();
     reopened.rerender({ themeSetting: 'system' });
-    expect(screen.getByText('0 geändert')).toBeVisible();
+    expect(screen.getByText('0 seit dem Öffnen geändert')).toBeVisible();
     await act(async () => {});
   });
   it('resets a row to its default even when the startup value differs', async () => {
@@ -788,11 +793,11 @@ describe('settings search, session changes and defaults', () => {
     localStorage.setItem('3mf-katalog-theme', 'dark');
     captureUiSettingsBaseline();
     const panel = renderPanel({ themeSetting: 'dark' });
-    expect(screen.getByText('0 geändert')).toBeVisible();
+    expect(screen.getByText('0 seit dem Öffnen geändert')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: `${de.settingsReset}: ${de.themeLegend}` }));
     expect(panel.props.onThemeChange).toHaveBeenCalledWith('system');
     panel.rerender({ themeSetting: 'system' });
-    expect(screen.getByText('1 geändert')).toBeVisible();
+    expect(screen.getByText('1 seit dem Öffnen geändert')).toBeVisible();
     await act(async () => {});
   });
   it('resets all tabs only after confirmation, even while searching', async () => {
@@ -816,7 +821,7 @@ describe('settings search, session changes and defaults', () => {
     const panel = renderPanel({ initialTab: 'info' });
     await act(async () => {});
     panel.rerender({ themeSetting: 'dark' });
-    expect(await screen.findByText('1 geändert')).toBeVisible();
+    expect(await screen.findByText('1 seit dem Öffnen geändert')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: de.settingsResetAll }));
     fireEvent.click(within(screen.getByRole('dialog', { name: de.settingsResetAll })).getByRole('button', { name: de.settingsResetAll }));
     await waitFor(() => expect(panel.props.onThemeChange).toHaveBeenCalledWith('system'));

@@ -102,7 +102,7 @@ fn unfit_folders_are_refused() {
     assert!(f.add(&f.base.join("missing")).is_err(), "missing");
     assert!(f.add(&file).is_err(), "a file");
     assert!(f.add(Path::new("relative/dir")).is_err(), "relative");
-    let dotdot = f.dir("one").join("..").join("one");
+    let dotdot = crate::commands::join_unresolved(&f.dir("one"), "../one");
     assert!(f.add(&dotdot).is_err(), "with ..");
     assert!(f.add(&f.dir("ok")).is_ok(), "counter-check: a normal folder is fine");
 }
@@ -243,10 +243,10 @@ fn the_entry_limit_stops_the_scan_and_says_so() {
     for n in 0..20 {
         write(&dir.join(format!("m{n:02}.stl")), &stl(n));
     }
-    let walked = walk_source_folder(&dir, MAX_SCAN_DEPTH, 8);
+    let walked = sources::walk_source_folder(&StdSourceFs, &dir, sources::MAX_SCAN_DEPTH, 8);
     assert!(walked.truncated);
     assert_eq!(walked.files.len(), 8);
-    let all = walk_source_folder(&dir, MAX_SCAN_DEPTH, 1000);
+    let all = sources::walk_source_folder(&StdSourceFs, &dir, sources::MAX_SCAN_DEPTH, 1000);
     assert!(!all.truncated, "counter-check: under the limit nothing is cut");
     assert_eq!(all.files.len(), 20);
     let _ = std::fs::remove_dir_all(dir.parent().unwrap());
@@ -422,7 +422,9 @@ impl JobFixture {
             NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        Self(dir)
+        // A scan lists files below the resolved source folder, and a selection must name
+        // them exactly as listed. The temp folder is reached through a link on macOS.
+        Self(dir.canonicalize().unwrap())
     }
     fn stl(&self, seed: u32) -> PathBuf {
         write(&self.0.join(format!("model_{seed}.stl")), &stl(seed))

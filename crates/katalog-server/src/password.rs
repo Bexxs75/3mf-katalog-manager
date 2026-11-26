@@ -17,6 +17,14 @@ use tokio::sync::Semaphore;
 pub const ARGON_MEMORY_KIB: u32 = 19_456;
 pub const ARGON_ITERATIONS: u32 = 2;
 pub const ARGON_PARALLELISM: u32 = 1;
+// Upper bounds for any stored hash. Verification uses the parameters written in the hash
+// itself, so an unbounded value in web-auth.json would let whoever can write that file
+// demand gigabytes or minutes of work per login attempt. About 3x the own settings.
+pub const ARGON_MAX_MEMORY_KIB: u32 = 65_536;
+pub const ARGON_MAX_ITERATIONS: u32 = 4;
+pub const ARGON_MAX_PARALLELISM: u32 = 4;
+const ARGON_MAX_OUTPUT_BYTES: usize = 64;
+const ARGON_MAX_SALT_CHARS: usize = 128;
 static HASH_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
 #[cfg(test)]
 pub(crate) static PASSWORD_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -36,6 +44,31 @@ fn argon() -> Argon2<'static> {
         Params::new(ARGON_MEMORY_KIB, ARGON_ITERATIONS, ARGON_PARALLELISM, None)
             .expect("statische Argon2-Parameter"),
     )
+}
+
+/// Accepts only a well-formed Argon2id hash whose cost parameters stay within the limits above.
+pub(crate) fn check_hash(hash: &PasswordHash<'_>) -> Result<(), String> {
+    let invalid = || "Passwortdatei enthält keinen gültigen Argon2id-Hash".to_owned();
+    if hash.algorithm.as_str() != "argon2id"
+        || hash.version != Some(19)
+        || hash.salt.is_none()
+        || hash.hash.is_none()
+    {
+        return Err(invalid());
+    }
+    let params = Params::try_from(hash).map_err(|_| invalid())?;
+    if hash.hash.is_some_and(|h| h.len() > ARGON_MAX_OUTPUT_BYTES)
+        || hash.salt.is_some_and(|salt| salt.as_str().len() > ARGON_MAX_SALT_CHARS)
+    {
+        return Err(invalid());
+    }
+    if params.m_cost() > ARGON_MAX_MEMORY_KIB
+        || params.t_cost() > ARGON_MAX_ITERATIONS
+        || params.p_cost() > ARGON_MAX_PARALLELISM
+    {
+        return Err("Argon2-Parameter des Passwort-Hashes überschreiten die erlaubten Obergrenzen".into());
+    }
+    Ok(())
 }
 
 async fn hashing<T: Send + 'static>(
@@ -86,6 +119,8 @@ pub(crate) async fn verify_with_slot(
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
         let parsed = PasswordHash::new(&hash).map_err(|_| "Ungültiger Passwort-Hash".to_owned())?;
+        // Before any work: a manipulated hash must not choose how much memory or time we spend.
+        check_hash(&parsed)?;
         match argon().verify_password(password.as_bytes(), &parsed) {
             Ok(()) => Ok(true),
             Err(argon2::password_hash::Error::Password) => Ok(false),
@@ -105,14 +140,7 @@ pub fn read_auth(path: &Path) -> Result<AuthFile, String> {
     }
     let hash = PasswordHash::new(&auth.password_hash)
         .map_err(|_| "Passwortdatei enthält ungültigen PHC-Hash".to_owned())?;
-    if hash.algorithm.as_str() != "argon2id"
-        || hash.version != Some(19)
-        || hash.salt.is_none()
-        || hash.hash.is_none()
-        || Params::try_from(&hash).is_err()
-    {
-        return Err("Passwortdatei enthält keinen gültigen Argon2id-Hash".into());
-    }
+    check_hash(&hash)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -222,6 +250,7 @@ pub fn validate_writable(path: &Path) -> Result<(), String> {
 }
 
 pub fn write_auth(path: &Path, auth: &AuthFile) -> Result<(), String> {
+    check_hash(&PasswordHash::new(&auth.password_hash).map_err(|_| "Ungültiger Passwort-Hash".to_owned())?)?;
     validate_writable(path)?;
     let parent = path
         .parent()
@@ -252,7 +281,52 @@ pub fn write_auth(path: &Path, auth: &AuthFile) -> Result<(), String> {
     if result.is_err() {
         let _ = fs::remove_file(&temporary);
     }
-    result.map_err(|_| "Passwort konnte nicht gespeichert werden".to_owned())
+    result.map_err(|_| "Passwort konnte nicht gespeichert werden".to_owned())?;
+    // The password is now a chosen one: the file with the generated start password is obsolete.
+    if !auth.must_change {
+        remove_initial_password(path);
+    }
+    Ok(())
+}
+
+/// Name of the file that holds a generated start password, next to the password file.
+const INITIAL_PASSWORD_FILE: &str = "web-initial-password.txt";
+pub fn initial_password_path(auth_file: &Path) -> PathBuf {
+    auth_file.with_file_name(INITIAL_PASSWORD_FILE)
+}
+/// Best effort: a file that is already gone is the goal, anything else stays for the operator.
+fn remove_initial_password(auth_file: &Path) {
+    let _ = fs::remove_file(initial_password_path(auth_file));
+}
+/// A generated start password goes into a file only its owner can read (0600, never into the
+/// log, which anyone with log access reads and which is kept for good). A file left over from an
+/// earlier setup is replaced. A failure is an error: the password is never printed instead.
+fn write_initial_password(auth_file: &Path, password: &str) -> Result<PathBuf, String> {
+    let path = initial_password_path(auth_file);
+    match fs::remove_file(&path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return Err("Startpasswort-Datei konnte nicht ersetzt werden".to_owned()),
+    }
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(&path)
+        .map_err(|_| "Startpasswort-Datei konnte nicht angelegt werden".to_owned())?;
+    let written = file
+        .write_all(password.as_bytes())
+        .and_then(|()| file.write_all(b"\n"))
+        .and_then(|()| file.sync_all());
+    if written.is_err() {
+        let _ = fs::remove_file(&path);
+        return Err("Startpasswort-Datei konnte nicht geschrieben werden".to_owned());
+    }
+    Ok(path)
 }
 
 pub fn strip_line_ending(mut value: String) -> String {
@@ -291,6 +365,9 @@ pub async fn bootstrap(
         {
             let auth = read_auth(&check_path)?;
             validate_writable(&check_path)?;
+            if !auth.must_change {
+                remove_initial_password(&check_path);
+            }
             if password.is_some() || password_file.is_some() {
                 eprintln!("KATALOG_PASSWORD(_FILE) ignoriert: nur zur Ersteinrichtung");
             }
@@ -329,10 +406,22 @@ pub async fn bootstrap(
     };
     let write_path = path.to_path_buf();
     let persisted = auth.clone();
-    file_work(move || write_auth(&write_path, &persisted)).await?;
-    // A supplied password is never echoed into the log.
-    if generated {
-        eprintln!("\n=== EINMALIGES STARTPASSWORT ===\n{plaintext}\nBitte nach der Anmeldung sofort ändern.\n==============================\n");
+    // A generated start password is handed over in a 0600 file, never through the log.
+    // The file comes first: if it cannot be written, no password is set that nobody knows.
+    let initial = if generated {
+        let (file_path, secret) = (path.to_path_buf(), plaintext);
+        Some(file_work(move || write_initial_password(&file_path, &secret)).await?)
+    } else {
+        None
+    };
+    if let Err(e) = file_work(move || write_auth(&write_path, &persisted)).await {
+        if let Some(file) = &initial {
+            let _ = fs::remove_file(file);
+        }
+        return Err(e);
+    }
+    if let Some(file) = initial {
+        eprintln!("\n=== STARTPASSWORT ===\nEin Startpasswort wurde erzeugt und in dieser Datei abgelegt (nur für den Besitzer lesbar):\n{}\nDas Passwort steht nicht im Log. Nach der Anmeldung sofort ändern; die Datei wird dann entfernt.\n=====================\n", file.display());
     }
     Ok(auth)
 }
@@ -527,6 +616,42 @@ mod tests {
         assert!(!verify_password(first, String::new()).await.unwrap());
     }
     #[tokio::test]
+    async fn oversized_argon2_parameters_are_rejected_everywhere() {
+        let _guard = PASSWORD_TEST_LOCK.lock().await;
+        let good = hash_password(PASSWORD.into()).await.unwrap();
+        // The server's own hash passes the limits it checks.
+        assert!(check_hash(&PasswordHash::new(&good).unwrap()).is_ok());
+        let tail = good.split('$').skip(4).collect::<Vec<_>>().join("$");
+        let with = |params: &str| format!("$argon2id$v=19${params}${tail}");
+        // Exactly at the limits is still fine; one step above is refused.
+        let at_limit = with(&format!("m={ARGON_MAX_MEMORY_KIB},t={ARGON_MAX_ITERATIONS},p={ARGON_MAX_PARALLELISM}"));
+        assert!(check_hash(&PasswordHash::new(&at_limit).unwrap()).is_ok());
+        for bad in [
+            format!("m={},t=2,p=1", ARGON_MAX_MEMORY_KIB + 1),
+            "m=4194304,t=2,p=1".to_owned(),
+            format!("m=19456,t={},p=1", ARGON_MAX_ITERATIONS + 1),
+            "m=19456,t=4294967295,p=1".to_owned(),
+            format!("m=19456,t=2,p={}", ARGON_MAX_PARALLELISM + 1),
+            "m=19456,t=2,p=255".to_owned(),
+        ] {
+            let hash = with(&bad);
+            assert!(check_hash(&PasswordHash::new(&hash).unwrap()).is_err(), "{bad}");
+            // Verification refuses before computing anything (this would otherwise allocate GiB).
+            let started = std::time::Instant::now();
+            assert!(verify_password(hash.clone(), PASSWORD.into()).await.is_err(), "{bad}");
+            assert!(started.elapsed() < Duration::from_secs(1), "{bad}");
+            // Reading a stored file and writing one refuse it as well.
+            let p = path();
+            let auth = AuthFile { version: 1, password_hash: hash, must_change: false, updated_at: 1 };
+            assert!(write_auth(&p, &auth).is_err(), "{bad}");
+            fs::write(&p, serde_json::to_vec(&auth).unwrap()).unwrap();
+            assert!(read_auth(&p).is_err(), "{bad}");
+        }
+        // Counter-check: the valid hash still verifies, with the right and the wrong password.
+        assert!(verify_password(good.clone(), PASSWORD.into()).await.unwrap());
+        assert!(!verify_password(good, "falsch".into()).await.unwrap());
+    }
+    #[tokio::test]
     async fn bootstrap_and_atomic_file() {
         let _guard = PASSWORD_TEST_LOCK.lock().await;
         let p = path();
@@ -569,6 +694,37 @@ mod tests {
         fs::remove_dir_all(p.parent().unwrap()).unwrap();
     }
     #[tokio::test]
+    async fn a_supplied_password_makes_no_start_password_file_and_a_stale_one_is_replaced() {
+        let _guard = PASSWORD_TEST_LOCK.lock().await;
+        let p = path();
+        bootstrap(&p, Some(PASSWORD.into()), None).await.unwrap();
+        assert!(!initial_password_path(&p).exists());
+        fs::remove_file(&p).unwrap();
+        // A leftover file of an earlier setup (here with a foreign mode) is replaced, not reused.
+        fs::write(initial_password_path(&p), "stale\n").unwrap();
+        let generated = bootstrap(&p, None, None).await.unwrap();
+        let secret = strip_line_ending(fs::read_to_string(initial_password_path(&p)).unwrap());
+        assert_ne!(secret, "stale");
+        assert!(verify_password(generated.password_hash, secret).await.unwrap());
+        // A chosen password at the next start removes the file even when it was never "changed" here.
+        let mut auth = read_auth(&p).unwrap();
+        auth.must_change = false;
+        write_auth(&p, &auth).unwrap();
+        assert!(!initial_password_path(&p).exists());
+        fs::remove_dir_all(p.parent().unwrap()).unwrap();
+    }
+    #[tokio::test]
+    async fn setup_fails_closed_when_the_start_password_file_cannot_be_written() {
+        let _guard = PASSWORD_TEST_LOCK.lock().await;
+        let p = path();
+        // A directory in the place of the file: it cannot be replaced, so the setup fails closed
+        // and no password file is created (no password that nobody knows).
+        fs::create_dir(initial_password_path(&p)).unwrap();
+        assert!(bootstrap(&p, None, None).await.is_err());
+        assert!(!p.exists());
+        fs::remove_dir_all(p.parent().unwrap()).unwrap();
+    }
+    #[tokio::test]
     async fn bootstrap_file_random_and_set_password() {
         let _guard = PASSWORD_TEST_LOCK.lock().await;
         let p = path();
@@ -585,6 +741,19 @@ mod tests {
         assert!(!p.exists());
         let generated = bootstrap(&p, None, None).await.unwrap();
         assert!(generated.must_change);
+        // The generated password is in a 0600 file next to the auth file and verifies.
+        let initial = initial_password_path(&p);
+        let secret = strip_line_ending(fs::read_to_string(&initial).unwrap());
+        assert_eq!(secret.chars().count(), 20);
+        assert!(verify_password(generated.password_hash.clone(), secret.clone()).await.unwrap());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(&initial).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        // Restarting before the change keeps the file; the password is still the start password.
+        bootstrap(&p, None, None).await.unwrap();
+        assert!(initial.exists());
         assert!(
             set_password(&p, Cursor::new(format!("{PASSWORD}\nwrong\n")), true)
                 .await
@@ -596,6 +765,8 @@ mod tests {
             .unwrap();
         let changed = read_auth(&p).unwrap();
         assert!(!changed.must_change);
+        // The change made the start password obsolete: its file is gone.
+        assert!(!initial.exists());
         let before_same = fs::read(&p).unwrap();
         assert!(
             set_password(&p, Cursor::new(format!("{PASSWORD}\n")), false)

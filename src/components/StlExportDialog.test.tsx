@@ -38,6 +38,22 @@ function open(fileType: string, onClose = vi.fn()) {
 const next = () => screen.getByRole('button', { name: de.stNext });
 
 describe('StlExportDialog', () => {
+  it('offers binary (default) and ASCII as a labelled radio group and sends the choice', async () => {
+    exportModelAsStl.mockResolvedValue(saved);
+    open('3mf');
+    const group = screen.getByRole('group', { name: de.stFormat });
+    const binary = within(group).getByRole('radio', { name: de.stFormatBinary });
+    const ascii = within(group).getByRole('radio', { name: de.stFormatAscii });
+    expect(binary).toBeChecked();
+    expect(ascii).not.toBeChecked();
+    expect(screen.queryByText(de.stFormatAsciiNote)).not.toBeInTheDocument();
+    fireEvent.click(ascii);
+    expect(ascii).toBeChecked();
+    expect(screen.getByText(de.stFormatAsciiNote)).toBeVisible();
+    fireEvent.click(next());
+    await waitFor(() => expect(exportModelAsStl).toHaveBeenCalledWith('7', { kind: 'all' }, 'ascii'));
+  });
+
   it('offers no range for a single plate, notes the lost colors and saves everything', async () => {
     exportModelAsStl.mockResolvedValue(saved);
     open('3mf');
@@ -46,7 +62,7 @@ describe('StlExportDialog', () => {
     expect(screen.getByText(de.stNoteColors)).toBeVisible();
     expect(screen.queryByText(de.stNotePlates)).not.toBeInTheDocument();
     fireEvent.click(next());
-    await waitFor(() => expect(exportModelAsStl).toHaveBeenCalledWith('7', { kind: 'all' }));
+    await waitFor(() => expect(exportModelAsStl).toHaveBeenCalledWith('7', { kind: 'all' }, 'binary'));
     expect(await screen.findByText(de.stDone)).toBeVisible();
     expect(screen.queryByText(de.stDoneInCatalog)).not.toBeInTheDocument();
   });
@@ -64,7 +80,7 @@ describe('StlExportDialog', () => {
     expect(selectOptions(plate).map(o => o.textContent)).toEqual(['Platte 1', 'Platte 2', 'Platte 3']);
     chooseSelect(plate, '3', mode);
     fireEvent.click(next());
-    await waitFor(() => expect(exportModelAsStl).toHaveBeenCalledWith('7', { kind: 'plate', number: 3 }));
+    await waitFor(() => expect(exportModelAsStl).toHaveBeenCalledWith('7', { kind: 'plate', number: 3 }, 'binary'));
   });
 
   it('shows no range and no color note for an OBJ', async () => {

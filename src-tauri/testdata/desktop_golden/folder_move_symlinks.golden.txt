@@ -1,0 +1,442 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "move the symlinked folder"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/cat/Linked",
+        "Metadata <ROOT>/cat/Target",
+        "Canonicalize <ROOT>/cat/Linked",
+        "Canonicalize <ROOT>/cat/Target",
+        "Canonicalize <ROOT>/cat",
+        "Metadata <ROOT>/cat/Target/Linked",
+        "Rename <ROOT>/cat/Linked -> <ROOT>/cat/Target/Linked"
+      ]
+    },
+    "step": "move the symlinked folder: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|Linked|5|<ROOT>/cat/Target/Linked"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "cat/Target/Linked",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "outside/real/",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "move the symlinked folder: state"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "rename the symlinked folder"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Target/Verlinkt",
+        "SymlinkMetadata <ROOT>/cat/Target/Verlinkt",
+        "Rename <ROOT>/cat/Target/Linked -> <ROOT>/cat/Target/Verlinkt"
+      ]
+    },
+    "step": "rename the symlinked folder: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|Verlinkt|5|<ROOT>/cat/Target/Verlinkt"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "cat/Target/Verlinkt",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "outside/real/",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "rename the symlinked folder: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderMoveAlreadyThere"
+      }
+    },
+    "step": "move a folder into a symlink that leads back to its parent"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/cat/Deko",
+        "Metadata <ROOT>/cat/Target/Up",
+        "Canonicalize <ROOT>/cat/Deko",
+        "Canonicalize <ROOT>/cat/Target/Up",
+        "Canonicalize <ROOT>/cat"
+      ]
+    },
+    "step": "move a folder into a symlink that leads back to its parent: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|Verlinkt|5|<ROOT>/cat/Target/Verlinkt",
+          "7|Up|5|<ROOT>/cat/Target/Up"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "cat/Target/Up",
+          "cat/Target/Verlinkt",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "outside/real/",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "move a folder into a symlink that leads back to its parent: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderMissingOnDisk",
+        "params": [
+          "<ROOT>/cat/Dangling"
+        ]
+      }
+    },
+    "step": "move a dangling symlink (source is no folder)"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/cat/Dangling"
+      ]
+    },
+    "step": "move a dangling symlink (source is no folder): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|Verlinkt|5|<ROOT>/cat/Target/Verlinkt",
+          "7|Up|5|<ROOT>/cat/Target/Up",
+          "8|Dangling|1|<ROOT>/cat/Dangling"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Dangling",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "cat/Target/Up",
+          "cat/Target/Verlinkt",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "outside/real/",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "move a dangling symlink (source is no folder): state"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "rename a dangling symlink"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Kaputt",
+        "SymlinkMetadata <ROOT>/cat/Kaputt",
+        "Rename <ROOT>/cat/Dangling -> <ROOT>/cat/Kaputt"
+      ]
+    },
+    "step": "rename a dangling symlink: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|Verlinkt|5|<ROOT>/cat/Target/Verlinkt",
+          "7|Up|5|<ROOT>/cat/Target/Up",
+          "8|Kaputt|1|<ROOT>/cat/Kaputt"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Kaputt",
+          "cat/Target/",
+          "cat/Target/Up",
+          "cat/Target/Verlinkt",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "outside/real/",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "rename a dangling symlink: state"
+  }
+]
+
+== tables ==
+[folders] 8 row(s)
+  id=1 | name=cat | parent_id=NULL | path=<ROOT>/cat
+  id=2 | name=Deko | parent_id=1 | path=<ROOT>/cat/Deko
+  id=3 | name=sub | parent_id=2 | path=<ROOT>/cat/Deko/sub
+  id=4 | name=Deko2 | parent_id=1 | path=<ROOT>/cat/Deko2
+  id=5 | name=Target | parent_id=1 | path=<ROOT>/cat/Target
+  id=6 | name=Verlinkt | parent_id=5 | path=<ROOT>/cat/Target/Verlinkt
+  id=7 | name=Up | parent_id=5 | path=<ROOT>/cat/Target/Up
+  id=8 | name=Kaputt | parent_id=1 | path=<ROOT>/cat/Kaputt
+[files] 4 row(s)
+  id=1 | name=a.3mf | path=<ROOT>/cat/Deko/a.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=b.3mf | path=<ROOT>/cat/Deko/sub/b.3mf | file_type=3mf | folder_id=3 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=3 | name=t.3mf | path=<ROOT>/cat/Deko/t.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=<ROOT>/trash/t.3mf | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=4 | name=c.3mf | path=<ROOT>/cat/Deko2/c.3mf | file_type=3mf | folder_id=4 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 4 row(s)
+  id=1 | file_id=1 | name=a.png | path=<ROOT>/cat/Deko/a_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=2 | file_id=2 | name=live.png | path=<ROOT>/cat/Deko/sub/b_extras/live.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=3 | file_id=2 | name=gone.png | path=<ROOT>/cat/Deko/sub/b_extras/gone.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=<TS> | trash_path=<ROOT>/trash/companion-3-gone.png
+  id=4 | file_id=4 | name=c.png | path=<ROOT>/cat/Deko2/c_extras/c.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+cat/
+cat/Deko/
+cat/Deko/a.3mf (5 bytes)
+cat/Deko/a_extras/
+cat/Deko/a_extras/a.png (16 bytes)
+cat/Deko/sub/
+cat/Deko/sub/b.3mf (5 bytes)
+cat/Deko/sub/b_extras/
+cat/Deko/sub/b_extras/live.png (16 bytes)
+cat/Deko/t.3mf (5 bytes)
+cat/Deko2/
+cat/Deko2/c.3mf (5 bytes)
+cat/Deko2/c_extras/
+cat/Deko2/c_extras/c.png (16 bytes)
+cat/Kaputt (symlink)
+cat/Target/
+cat/Target/Up (symlink)
+cat/Target/Verlinkt (symlink)
+outside/
+outside/a.png (16 bytes)
+outside/c.png (16 bytes)
+outside/gone.png (16 bytes)
+outside/live.png (16 bytes)
+outside/real/
+trash/
+trash/companion-3-gone.png (16 bytes)
+trash/t.3mf (5 bytes)

@@ -84,26 +84,28 @@ function DesktopFolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, on
   </CatalogActionDialog>;
 }
 
-function WebFolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, returnFocus, folders = [] }: MenuProps) {
+function WebFolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, onTrashed, returnFocus, folders = [] }: MenuProps) {
   const canManage = useCanManageFiles();
   const { jobActive } = useImportLock();
   const t = useT();
   const formatCount = useFormatCount();
   const [action, setAction] = useState<'create' | 'rename' | 'move' | 'remove' | null>(null);
+  const [trashDialog, setTrashDialog] = useState(false);
   const [draft, setDraft] = useState(name);
   const [target, setTarget] = useState('');
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [password, setPassword] = useState('');
   const menu = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (action || !canManage) return;
+    if (action || trashDialog || !canManage) return;
     menu.current?.querySelector('button')?.focus();
     const outside = (e: MouseEvent) => { if (!menu.current?.contains(e.target as Node)) onClose(); };
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape' || e.key === 'Tab') { onClose(); returnFocus.current?.focus(); } };
     document.addEventListener('mousedown', outside); document.addEventListener('keydown', key);
     return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', key); };
-  }, [action, canManage, onClose, returnFocus]);
+  }, [action, trashDialog, canManage, onClose, returnFocus]);
   useEffect(() => {
     if (action !== 'remove' || !canManageFiles()) return;
     let cancelled = false;
@@ -114,21 +116,26 @@ function WebFolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, return
   }, [action, folderId]);
   if (!canManage) return null;
   const titles = { create: t('folderOpCreate'), rename: t('folderOpRename'), move: t('folderOpMove'), remove: t('removeCatalog') };
+  if (trashDialog) return <FolderTrashDialog folderId={folderId} name={name} onClose={onClose} onTrashed={onTrashed ?? (() => {})} returnFocus={returnFocus} />;
   if (!action) return createPortal(<div ref={menu} role="menu" className="fixed z-50 rounded border bg-[var(--panel)] p-2 shadow-lg" style={{ left: Math.max(0, Math.min(x, window.innerWidth - 260)), top: Math.max(0, Math.min(y, window.innerHeight - 200)) }}>
-    {(['create', 'rename', 'move', 'remove'] as const).map(item => <button key={item} role="menuitem" disabled={jobActive} className="block w-full p-2 text-left hover:bg-[var(--panel-2)]" onClick={() => { setDraft(item === 'create' ? '' : name); setAction(item); }}>{titles[item]}</button>)}
+    {(['create', 'rename', 'move', 'remove'] as const).map(item => <button key={item} role="menuitem" disabled={jobActive} className="block w-full p-2 text-left hover:bg-[var(--panel-2)]" onClick={() => { setDraft(item === 'create' ? '' : name); setAction(item); setPassword(''); }}>{titles[item]}</button>)}
+    <button role="menuitem" disabled={jobActive} className="block w-full p-2 text-left font-semibold text-red-400 hover:bg-[var(--panel-2)]" onClick={() => setTrashDialog(true)}>{t('trashFolder')}</button>
   </div>, document.body);
   const parentId = folders.find(folder => folder.id === folderId)?.parentId;
   const targets = folders.filter(folder => folder.id !== parentId && !isFolderSelfOrDescendant(folder.id, folderId, folders));
+  // The server asks for the password as soon as the folder holds catalog entries.
+  const needsPassword = action === 'remove' && !!summary && summary.modelCount > 0;
   const submit = async () => {
     if (busy || jobActive || !canManageFiles()) return;
     if (action === 'remove' && !summary) return;
+    if (needsPassword && !password) return;
     if (action === 'move' && !targets.some(folder => folder.id === target)) return;
     setBusy(true); setError(null);
     try {
       if (action === 'create') await foldersApi.createFolder(folderId, draft);
       if (action === 'rename') await foldersApi.renameFolder(folderId, draft);
       if (action === 'move') await foldersApi.moveFolder(folderId, target);
-      if (action === 'remove') { await fileOp('remove_folder_from_catalog', { folderId }); onRemoved(); }
+      if (action === 'remove') { const secret = password; setPassword(''); await fileOp('remove_folder_from_catalog', { folderId, ...(needsPassword ? { password: secret } : {}) }); onRemoved(); }
       onClose();
     } catch (reason) { setError(toAppError(reason).message); }
     finally { setBusy(false); }
@@ -141,8 +148,9 @@ function WebFolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, return
     {action === 'remove' && <>
       {summary ? <ul><li>{formatCount(t('removeFolderList'), summary.subfolderCount).replace('{name}', displayName(summary.name))}</li><li>{formatCount(t('removeFolderModels'), summary.modelCount)}</li></ul> : <p>{t('folderOpLoading')}</p>}
       <p>{t('removeFolderSafe')}</p><p>{t('removeFolderReimport')}</p>
+      {needsPassword && <div><p>{t('removeFolderPasswordHint')}</p><label className="block">{t('webFilePassword')}<input type="password" autoComplete="new-password" data-1p-ignore data-lpignore="true" value={password} disabled={busy} onChange={event => setPassword(event.target.value)} className="block w-full border p-2 bg-[var(--panel)]" /></label></div>}
     </>}
     {error && <p role="alert">{error}</p>}
-    <div className="flex justify-end gap-2"><button className={catalogActionButton} disabled={busy} onClick={onClose}>{t('cancel')}</button><button className={catalogActionButton} disabled={busy || jobActive || (action === 'remove' && !summary) || (action === 'move' && !target) || ((action === 'create' || action === 'rename') && !draft.trim())} onClick={() => void submit()}>{t('folderOpConfirm')}</button></div>
+    <div className="flex justify-end gap-2"><button className={catalogActionButton} disabled={busy} onClick={onClose}>{t('cancel')}</button><button className={catalogActionButton} disabled={busy || jobActive || (action === 'remove' && !summary) || (needsPassword && !password) || (action === 'move' && !target) || ((action === 'create' || action === 'rename') && !draft.trim())} onClick={() => void submit()}>{t('folderOpConfirm')}</button></div>
   </CatalogActionDialog>;
 }

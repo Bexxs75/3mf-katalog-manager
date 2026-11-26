@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-use super::address::{base_url, resolve, AddressPolicy};
+use super::address::{base_url, resolve_within, AddressPolicy};
 use super::api_key::ApiKey;
 use super::sync::unix_now;
 use super::{ConnectionInfo, JobOutcome, LinkError, PrinterLink, RemoteJob};
@@ -39,6 +39,16 @@ pub struct HistoryPage {
     pub raw_len: usize,
     /// Finished, readable prints on this page.
     pub jobs: Vec<RemoteJob>,
+}
+
+/// We ask for PAGE entries. More is a protocol violation (and would break the paging arithmetic if
+/// cut), so such an answer is refused as a whole, before any job is parsed.
+fn check_page_len(v: &Value) -> Result<(), LinkError> {
+    let len = v.pointer("/result/jobs").and_then(Value::as_array).map_or(0, Vec::len);
+    if len > PAGE {
+        return Err(bad("zu viele Jobs auf einer Seite"));
+    }
+    Ok(())
 }
 
 pub fn parse_history_page(v: &Value) -> Result<HistoryPage, LinkError> {
@@ -160,8 +170,11 @@ const PAGE_TIMEOUT: Duration = Duration::from_secs(10);
 pub const PRINTER_BUDGET: Duration = Duration::from_secs(45);
 pub const MAX_JSON_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_THUMB_BYTES: u64 = 512 * 1024;
+const PNG_MAGIC: &[u8] = b"\x89PNG\r\n\x1a\n";
 const PAGE: usize = 50;
 const MAX_PAGES: usize = 40;
+/// Hard cap for the jobs gathered from one printer in one pass (the sync stores far fewer per pass).
+const MAX_COLLECTED_JOBS: usize = 1000;
 /// Moonraker filters `since` by the job start; a print that started before
 /// `since` and ended after it would otherwise be missing.
 pub const LOOKBACK_S: f64 = 2.0 * 24.0 * 3600.0;
@@ -281,11 +294,21 @@ impl MoonrakerLink {
 
     /// First port 80 (Mainsail/nginx), then 7125 (Moonraker directly), unless the address names a port itself.
     fn candidate_bases(&self) -> Result<Vec<String>, LinkError> {
-        let target = resolve(&self.address, self.policy)?;
-        Ok(match target.port {
-            Some(p) => vec![base_url(target.ip, p)],
-            None => vec![base_url(target.ip, 80), base_url(target.ip, 7125)],
-        })
+        let left = self.deadline.saturating_duration_since(Instant::now());
+        let target = resolve_within(&self.address, self.policy.clone(), left)?;
+        let ports = match target.port {
+            Some(p) => vec![p],
+            None => vec![80, 7125],
+        };
+        let bases: Vec<String> = ports
+            .into_iter()
+            .filter(|p| !self.policy.denies_port(*p))
+            .map(|p| base_url(target.ip, p))
+            .collect();
+        if bases.is_empty() {
+            return Err(LinkError::AddressNotAllowed);
+        }
+        Ok(bases)
     }
 
     fn check_base(&self, base: &str) -> Result<(), LinkError> {
@@ -392,6 +415,11 @@ fn classify_kind(kind: std::io::ErrorKind) -> Option<LinkError> {
 fn class_in_chain(error: &(dyn std::error::Error + 'static)) -> Option<LinkError> {
     let mut current: Option<&(dyn std::error::Error + 'static)> = Some(error);
     while let Some(e) = current {
+        // The total limit of a request also ends a body that is still being read. reqwest
+        // reports that as its own error without any I/O kind below it.
+        if e.downcast_ref::<reqwest::Error>().is_some_and(reqwest::Error::is_timeout) {
+            return Some(LinkError::Timeout);
+        }
         if let Some(io) = e.downcast_ref::<std::io::Error>() {
             if let Some(class) = classify_kind(io.kind()) {
                 return Some(class);
@@ -468,7 +496,7 @@ impl MoonrakerLink {
                     self.page_timeout,
                 )
                 .and_then(|f| serde_json::from_slice::<Value>(&f.body).map_err(|e| bad(&e.to_string())))
-                .and_then(|v| parse_history_page(&v));
+                .and_then(|v| check_page_len(&v).and_then(|()| parse_history_page(&v)));
             let page = match answer {
                 Ok(page) => page,
                 Err(e) if e.is_transient() && start > 0 => {
@@ -478,6 +506,11 @@ impl MoonrakerLink {
                 Err(e) => return Err(e),
             };
             jobs.extend(page.jobs);
+            if jobs.len() >= MAX_COLLECTED_JOBS {
+                // The next pass continues after the newest stored print.
+                jobs.truncate(MAX_COLLECTED_JOBS);
+                break;
+            }
             start += PAGE;
             if page.raw_len < PAGE || start as u64 >= page.count {
                 break;
@@ -490,6 +523,9 @@ impl MoonrakerLink {
 impl PrinterLink for MoonrakerLink {
     fn test(&self) -> Result<ConnectionInfo, LinkError> {
         let mut last = LinkError::Unreachable;
+        if self.deadline <= Instant::now() {
+            return Err(LinkError::Timeout);
+        }
         for base in self.candidate_bases()? {
             if self.deadline <= Instant::now() {
                 return Err(LinkError::Timeout);
@@ -551,7 +587,12 @@ impl PrinterLink for MoonrakerLink {
             let mut segs = u.path_segments_mut().map_err(|_| LinkError::BadResponse("URL".into()))?;
             segs.clear().extend(["server", "files", "gcodes"]).extend(path.split('/'));
         }
-        self.get_bytes(u, MAX_THUMB_BYTES)
+        let bytes = self.get_bytes(u, MAX_THUMB_BYTES)?;
+        // The printer is not trusted: only real PNG data goes on to the browser or the store.
+        if !bytes.starts_with(PNG_MAGIC) {
+            return Err(LinkError::BadResponse("kein PNG".into()));
+        }
+        Ok(bytes)
     }
 
     fn set_deadline(&mut self, deadline: Instant) {
@@ -908,6 +949,25 @@ mod client_tests {
     }
 
     #[test]
+    fn allowlist_denied_address_never_sends_http_request() {
+        let server = sv08();
+        let allowlist = super::super::address::AddressAllowlist::from_strings(["127.0.0.2"]).unwrap();
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST.with_allowlist(allowlist));
+        assert_eq!(link.test(), Err(LinkError::AddressNotAllowed));
+        assert!(server.requests().is_empty());
+    }
+
+    #[test]
+    fn allowlist_permitted_address_connects_to_fake_printer() {
+        let server = sv08();
+        let allowlist = super::super::address::AddressAllowlist::from_strings(["127.0.0.1"]).unwrap();
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST.with_allowlist(allowlist));
+        let info = link.test().unwrap();
+        assert_eq!(info.base_url, format!("http://{}", server.address()));
+        assert!(!server.requests().is_empty());
+    }
+
+    #[test]
     fn http_401_means_auth_required() {
         let server = FakeServer::start(|_| Some((401, b"{}".to_vec())));
         let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
@@ -1136,6 +1196,40 @@ mod client_tests {
         assert_eq!(link.jobs_ended_since(&info, 0.0).unwrap().len(), 120);
     }
 
+    fn history_server(count: u64, per_page: usize) -> FakeServer {
+        FakeServer::start(move |target| {
+            if target.starts_with("/server/history/list") {
+                let start: usize = target.split("start=").nth(1).unwrap_or("0").split('&').next().unwrap().parse().unwrap();
+                let jobs: Vec<String> = (start..start + per_page)
+                    .map(|i| format!(r#"{{"end_time": {}.0, "filament_used": 1.0, "filename": "a.gcode", "metadata": {{}}, "print_duration": 1.0, "status": "completed", "job_id": "{i}"}}"#, 1000 + i))
+                    .collect();
+                Some((200, format!(r#"{{"result": {{"count": {count}, "jobs": [{}]}}}}"#, jobs.join(",")).into_bytes()))
+            } else {
+                Some((200, fixture_bytes("server_info_v0_8_0_209.json")))
+            }
+        })
+    }
+
+    #[test]
+    fn overfull_history_pages_are_refused() {
+        let server = history_server(10_000, PAGE + 1);
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        let info = link.test().unwrap();
+        assert!(matches!(link.jobs_ended_since(&info, 0.0), Err(LinkError::BadResponse(_))));
+        let page = serde_json::json!({"result": {"count": 1, "jobs": vec![serde_json::json!({}); PAGE + 1]}});
+        assert!(matches!(check_page_len(&page), Err(LinkError::BadResponse(_))));
+    }
+
+    #[test]
+    fn collected_jobs_per_printer_have_a_hard_cap() {
+        let server = history_server(1_000_000, PAGE);
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        let info = link.test().unwrap();
+        assert_eq!(link.jobs_ended_since(&info, 0.0).unwrap().len(), MAX_COLLECTED_JOBS);
+        let pages = server.requests().iter().filter(|r| r.starts_with("/server/history/list")).count();
+        assert_eq!(pages, MAX_COLLECTED_JOBS / PAGE);
+    }
+
     #[test]
     fn http_dates_are_parsed() {
         assert_eq!(parse_http_date("Mon, 11 Dec 2023 17:00:00 GMT"), Some(1_702_314_000.0));
@@ -1201,6 +1295,34 @@ mod client_tests {
         let server = FakeServer::start(move |_| Some((200, big.clone())));
         let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
         assert!(matches!(link.test(), Err(LinkError::BadResponse(_))));
+    }
+
+    /// The request's own limit can end the body read a moment before the waiting side gives
+    /// up. That answer must say "timeout" too, whichever of the two is first.
+    #[test]
+    fn a_body_cut_off_by_the_request_limit_is_a_timeout() {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (done_tx, done_rx) = mpsc::channel::<()>();
+        std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else { return };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            loop {
+                let mut h = String::new();
+                if reader.read_line(&mut h).is_err() || h == "\r\n" || h.is_empty() {
+                    break;
+                }
+            }
+            let _ = stream.write_all(b"HTTP/1.1 200 X\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n ");
+            // Keep the connection open and silent until the client has given up.
+            let _ = done_rx.recv_timeout(Duration::from_secs(10));
+        });
+        let client = reqwest::blocking::Client::builder().no_proxy().build().unwrap();
+        let mut resp = client.get(format!("http://127.0.0.1:{port}/")).timeout(Duration::from_millis(200)).send().unwrap();
+        let error = resp.read_to_end(&mut Vec::new()).unwrap_err();
+        let _ = done_tx.send(());
+        assert_eq!(classify_io_error(&error), LinkError::Timeout, "{error:?}");
     }
 
     /// A trickling printer must not block `get_bytes` indefinitely.
@@ -1273,5 +1395,54 @@ mod client_tests {
         let started = std::time::Instant::now();
         assert_eq!(link.test(), Err(LinkError::Timeout));
         assert!(started.elapsed() < Duration::from_millis(210), "{:?}", started.elapsed());
+    }
+    #[test]
+    fn printer_service_redirect_is_not_followed() {
+        let destination = FakeServer::start(|_| Some((200, b"{}".to_vec())));
+        let location = format!("http://{}/server/info", destination.address());
+        let origin = FakeServer::start_replying(move |_| super::super::fake_moonraker::Reply::Redirect(location.clone()));
+        let link = MoonrakerLink::new(&origin.address(), AddressPolicy::TEST);
+        assert!(link.test().is_err());
+        assert!(destination.requests().is_empty());
+    }
+
+    #[test]
+    fn printer_service_oversized_thumbnail_is_rejected() {
+        let server = FakeServer::start(|_| Some((200, vec![b'x'; (MAX_THUMB_BYTES + 1) as usize])));
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        let base = format!("http://{}", server.address());
+        assert!(matches!(link.thumbnail(&base, ".thumbs/test.png"), Err(LinkError::BadResponse(_))));
+    }
+
+    #[test]
+    fn thumbnail_without_png_magic_is_discarded() {
+        let base_of = |s: &FakeServer| format!("http://{}", s.address());
+        for body in [&b"<html>secret internal page</html>"[..], b"\x89PNG", b"GIF89a", b"", b" \x89PNG\r\n\x1a\n"] {
+            let body = body.to_vec();
+            let server = FakeServer::start(move |_| Some((200, body.clone())));
+            let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+            let err = link.thumbnail(&base_of(&server), ".thumbs/a-300x300.png").unwrap_err();
+            assert_eq!(err, LinkError::BadResponse("kein PNG".into()));
+        }
+        let ok = FakeServer::start(|_| Some((200, b"\x89PNG\r\n\x1a\nrest".to_vec())));
+        let link = MoonrakerLink::new(&ok.address(), AddressPolicy::TEST);
+        assert!(link.thumbnail(&base_of(&ok), ".thumbs/a-300x300.png").unwrap().starts_with(b"\x89PNG\r\n\x1a\n"));
+    }
+
+    #[test]
+    fn own_service_port_never_sends_a_request() {
+        let server = sv08();
+        let port = server.address().rsplit(':').next().unwrap().parse::<u16>().unwrap();
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST.denying_port(port));
+        assert_eq!(link.test(), Err(LinkError::AddressNotAllowed));
+        assert!(server.requests().is_empty());
+        // A different denied port leaves the printer reachable.
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST.denying_port(port.wrapping_add(1).max(1)));
+        assert!(link.test().is_ok());
+        // Default ports 80/7125 are dropped from the candidates when one of them is the service port.
+        let link = MoonrakerLink::new("127.0.0.1", AddressPolicy::TEST.denying_port(80));
+        assert_eq!(link.candidate_bases().unwrap(), vec!["http://127.0.0.1:7125".to_string()]);
+        let link = MoonrakerLink::new("127.0.0.1", AddressPolicy::TEST.denying_port(7125));
+        assert_eq!(link.candidate_bases().unwrap(), vec!["http://127.0.0.1".to_string()]);
     }
 }

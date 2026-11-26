@@ -58,17 +58,17 @@ it('sends files sequentially as File bodies, encodes the name and starts only su
 });
 it('rejects unsupported archive formats, wrong extensions and directory selections before sending', async () => {
   const folderFile = new File(['a'], 'nested.stl'); Object.defineProperty(folderFile, 'webkitRelativePath', { value: 'folder/nested.stl' });
-  controller.addFiles([new File(['a'], 'file.rar'), new File(['a'], 'x.tar.gz'), new File(['a'], 'x.3mf.exe'), folderFile]); await flush();
+  controller.addFiles([new File(['a'], 'file.rar'), new File(['a'], 'FILE.RAR'), new File(['a'], 'x.3mf.exe'), new File(['a'], 'x.gz'), folderFile]); await flush();
   expect(Xhr.requests).toHaveLength(0);
-  expect(controller.getSnapshot().queue.map(r => r.error)).toEqual(['webUploadArchives', 'webUploadArchives', 'webUploadType', 'webUploadFolders']);
+  expect(controller.getSnapshot().queue.map(r => r.error)).toEqual(['webUploadArchives', 'webUploadArchives', 'webUploadType', 'webUploadType', 'webUploadFolders']);
 });
-it('uploads zip and 7z archives like any other file, whatever the letter case', async () => {
-  controller.addFiles([new File(['a'], 'Paket.ZIP'), new File(['b'], 'paket.7z')]);
+it('uploads zip, 7z and tar archives like any other file, whatever the letter case', async () => {
+  controller.addFiles([new File(['a'], 'Paket.ZIP'), new File(['b'], 'paket.7z'), new File(['c'], 'p.TAR.GZ'), new File(['d'], 'p.tgz')]);
   expect(Xhr.requests).toHaveLength(1);
   expect(Xhr.requests[0].headers['X-Upload-Name']).toBe('Paket.ZIP');
-  Xhr.requests[0].respond(); await flush();
-  expect(Xhr.requests).toHaveLength(2);
-  expect(controller.getSnapshot().queue.map(r => r.error)).toEqual([undefined, undefined]);
+  for (let i = 0; i < 3; i++) { Xhr.requests[i].respond(); await flush(); }
+  expect(Xhr.requests.map(r => r.headers['X-Upload-Name'])).toEqual(['Paket.ZIP', 'paket.7z', 'p.TAR.GZ', 'p.tgz']);
+  expect(controller.getSnapshot().queue.map(r => r.error)).toEqual([undefined, undefined, undefined, undefined]);
 });
 it('maps the archive failure codes of the server to their own texts', () => {
   expect(uploadErrorKey({ status: 415, kind: 'archive_format_unsupported' })).toBe('webUploadArchives');
@@ -128,6 +128,12 @@ it('discards open uploads and submits an import without any target folder', asyn
   await controller.discard('u1'); await controller.start(['u2']);
   expect(calls.find(c => c.url.endsWith('discard_upload'))?.args).toEqual({ uploadId: 'u1' });
   expect(calls.find(c => c.url.endsWith('start_upload_import'))?.args).toEqual({ uploadIds: ['u2'] });
+});
+it('shows the result of an upload import but not of a server folder copy sharing the event stream', async () => {
+  Events.instances[0].emit({ ...job('completed'), jobId: 'folder', source: true }, 'import-finished');
+  expect(controller.getSnapshot().result).toBeNull();
+  Events.instances[0].emit(job('completed'), 'import-finished');
+  expect(controller.getSnapshot().result?.jobId).toBe('j1');
 });
 it.each([[400,'webUploadInvalid'],[409,'webUploadConflict'],[413,'webUploadTooLarge'],[415,'webUploadType'],[507,'webUploadNoSpace'],[0,'webUploadOffline'],[503,'webUploadRestart']] as const)('maps HTTP %s to a user-facing error', (status, key) => {
   expect(uploadErrorKey({ status })).toBe(key);
@@ -195,4 +201,10 @@ it('starts all successful uploads from the authoritative GET despite a delayed o
   Events.instances[0].emit({ uploads: [{ uploadId: 'u1', name: 'one.stl', state: 'uploaded', size: 1, time: 1, result: null }] });
   resolve(Response.json(uploads)); await flush();
   expect(calls.find(c => c.url.endsWith('start_upload_import'))?.args).toEqual({ uploadIds: ['u1', 'u2'] });
+});
+
+it('shows the checksum wait, not the generic upload conflict, for a 409 catalogHashCheckPending', () => {
+  expect(uploadErrorKey({ status: 409, message: 'catalogHashCheckPending' })).toBe('errCatalogHashCheckPending');
+  expect(uploadErrorKey({ status: 409, code: 'catalogHashCheckPending' })).toBe('errCatalogHashCheckPending');
+  expect(uploadErrorKey({ status: 409 })).toBe('webUploadConflict');
 });

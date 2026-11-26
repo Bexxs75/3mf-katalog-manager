@@ -177,10 +177,16 @@ function attachLifecycle() {
   if (import.meta.env.VITE_TARGET !== 'web' && '__TAURI_INTERNALS__' in window) {
     void import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
       const win = getCurrentWindow();
-      detachClose = await win.onCloseRequested(async () => {
+      detachClose = await win.onCloseRequested(async (event) => {
         // Best-effort persistence must not veto the native close decision.
         try { await withDeadline(flushUiSettings(), 1000); }
         catch (cause) { failed(cause); }
+        // The backend has already hidden the window for "minimize to tray". Without a veto here the
+        // JS wrapper destroys the window after this handler returns, which quits the app.
+        try {
+          const behavior = await invoke<{ action?: string; trayAvailable?: boolean } | null>('get_close_behavior');
+          if (behavior?.action === 'tray' && behavior.trayAvailable === true) event.preventDefault();
+        } catch { /* unknown state: keep the native decision */ }
       });
     }).catch(failed);
   }

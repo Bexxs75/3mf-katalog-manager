@@ -33,6 +33,8 @@ pub enum Operation {
     CompanionPurge,
     /// A new companion file is written next to a model; the model stays.
     CompanionAdd,
+    /// Unlink desktop trash entries using the separate, pinned capability.
+    PurgeDesktopTrash,
 }
 impl Operation {
     /// Operations of format version 3: they act on a single companion, not on a model.
@@ -89,6 +91,12 @@ pub struct CompanionAdd {
 pub struct ExtrasDir {
     pub relative: String,
     pub identity: Option<Identity>,
+}
+/// Restore-only metadata. Unknown fields make older readers refuse this subtype.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RestoreParents {
+    pub directories: Vec<ExtrasDir>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileState {
@@ -152,6 +160,8 @@ pub struct Intent {
     /// Only for `CompanionAdd`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub companion_add: Option<CompanionAdd>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restore: Option<RestoreParents>,
 }
 impl Intent {
     pub(crate) fn has_companion_data(&self) -> bool {
@@ -160,10 +170,10 @@ impl Intent {
 }
 /// Format 1 predates companion data. Entries with companion data are written as
 /// version 2 so an older binary refuses the file instead of ignoring the new fields.
-/// Version 3 is only written while an entry acts on a single companion file; an older
-/// binary then stops with `RestartRequired` instead of meeting an unknown operation.
+/// Single-companion edits, desktop purges and restore parents use the third format.
+/// Unknown operation variants fail closed when an older binary reads the document.
 fn document_version(intents: &[Intent], folders: &[FolderIntent]) -> u32 {
-    if intents.iter().any(|i| i.operation.is_companion_edit()) {
+    if intents.iter().any(|i| i.operation.is_companion_edit() || i.operation == Operation::PurgeDesktopTrash || i.restore.is_some()) {
         3
     } else if intents.iter().any(Intent::has_companion_data) || folders.iter().any(FolderIntent::has_companion_data) {
         2
@@ -221,7 +231,7 @@ impl Journal {
                 let doc: Document =
                     serde_json::from_reader(file).map_err(|_| Error::RestartRequired)?;
                 // A file never carries data of a newer format than its version says, and a
-                // version-3 file exists only while it holds a single-companion entry.
+                // third-format file exists only while it holds an operation requiring it.
                 let needed = document_version(&doc.intents, &doc.folders);
                 if !matches!(doc.version, 1..=3)
                     || (doc.version == 1 && needed != 1)
@@ -232,6 +242,10 @@ impl Journal {
                 }
                 // The add-specific record belongs to exactly the add operation.
                 if doc.intents.iter().any(|i| (i.operation == Operation::CompanionAdd) != i.companion_add.is_some()) {
+                    return Err(Error::RestartRequired);
+                }
+                if doc.intents.iter().any(|i| i.restore.is_some()
+                    && !matches!(i.operation, Operation::Restore | Operation::DbOnly)) {
                     return Err(Error::RestartRequired);
                 }
                 let mut ids = std::collections::HashSet::new();

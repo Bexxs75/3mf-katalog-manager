@@ -776,3 +776,58 @@ fn print_temperatures_web_round_trip_and_validation() {
         (None, Some(215), Some(0), Some(500))
     );
 }
+
+fn image_limit<T: std::fmt::Debug>(result: Result<T, WriteError>) {
+    match result {
+        Err(WriteError::Coded { code: crate::error_code::ErrorCode::WebImageQuotaReached, params, .. }) => {
+            assert_eq!(params, vec![(MAX_SPOOL_IMAGE_TOTAL_BYTES / (1024 * 1024)).to_string()])
+        }
+        other => panic!("expected WebImageQuotaReached, got {other:?}"),
+    }
+}
+fn image_bytes(c: &Connection) -> i64 {
+    c.query_row("SELECT COALESCE(SUM(length(image_png)),0) FROM filament_spools", [], |r| r.get(0)).unwrap()
+}
+
+#[test]
+fn spool_images_stop_at_the_total_limit_for_add_update_and_restock() {
+    let (mut c, _, _, id) = setup();
+    let small = image_bytes(&c);
+    // Fill the room except for a few bytes with a padding image on the existing spool.
+    let pad = MAX_SPOOL_IMAGE_TOTAL_BYTES - 4;
+    c.execute("UPDATE filament_spools SET image_png = zeroblob(?1) WHERE id=?2", rusqlite::params![pad, id]).unwrap();
+    assert!(small < 16 && image_bytes(&c) == pad);
+    // A new spool with an 8-byte image does not fit; nothing was written.
+    let count_before: i64 = c.query_row("SELECT COUNT(*) FROM filament_spools", [], |r| r.get(0)).unwrap();
+    image_limit(add_filament_spool(&mut c, spool()));
+    assert_eq!(c.query_row("SELECT COUNT(*) FROM filament_spools", [], |r| r.get::<_, i64>(0)).unwrap(), count_before);
+    // Gegenprobe: the same spool without an image is accepted.
+    let mut plain = spool();
+    plain.image_png = None;
+    add_filament_spool(&mut c, plain).unwrap();
+    // A restock copies the template image into every new row, so it is checked as count x image.
+    image_limit(restock_filament_spool(&mut c, id, 2, 100.0, None, None));
+    assert_eq!(image_bytes(&c), pad);
+    // Gegenprobe: restocking from a spool without an image is fine.
+    let plain_id: i64 = c.query_row("SELECT id FROM filament_spools WHERE image_png IS NULL", [], |r| r.get(0)).unwrap();
+    restock_filament_spool(&mut c, plain_id, 2, 100.0, None, None).unwrap();
+    // Replacing the image of the padded spool by a small one frees the room it held itself:
+    // the spool's own old image does not count against its replacement.
+    let mut s = spool();
+    s.id = id.to_string();
+    update_filament_spool(&mut c, id, s, true).unwrap();
+    assert!(image_bytes(&c) < 32);
+    // Updating without replacing the image is never refused for the image total.
+    c.execute("UPDATE filament_spools SET image_png = zeroblob(?1) WHERE id=?2", rusqlite::params![MAX_SPOOL_IMAGE_TOTAL_BYTES, id]).unwrap();
+    let mut s = spool();
+    s.id = id.to_string();
+    s.material = "ABS".into();
+    update_filament_spool(&mut c, id, s, false).unwrap();
+    // But a replacement above the total is: 8 bytes next to a full catalog of other spools' images.
+    let mut other = spool();
+    other.image_png = None;
+    let other_id = add_filament_spool(&mut c, other).unwrap().value.id.parse::<i64>().unwrap();
+    let mut s = spool();
+    s.id = other_id.to_string();
+    image_limit(update_filament_spool(&mut c, other_id, s, true));
+}

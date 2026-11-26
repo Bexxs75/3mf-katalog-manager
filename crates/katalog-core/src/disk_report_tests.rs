@@ -249,11 +249,14 @@ fn an_empty_root_without_models_is_fine() {
 
 #[test]
 fn rows_with_dot_dot_leave_no_trace_and_count_as_outside() {
-    let root = dir("dr-dots");
+    // The root as a user types it, not its canonical spelling: Windows canonicalizes to a
+    // verbatim path (`\\?\C:\...`), in which `.` is no longer skipped as a component.
+    let root = crate::unique_test_dir("dr-dots");
     touch(&root.join("keep.stl"));
-    let sneaky = format!("{}/../outside/x.3mf", root.display());
+    let row = |tail: &str| crate::join_unresolved(&root, tail).to_str().unwrap().to_owned();
+    let sneaky = row("../outside/x.3mf");
     let snapshot = Snapshot {
-        models: vec![ModelRow { id: 1, path: sneaky.clone(), active: true }, ModelRow { id: 2, path: format!("{}/./keep.stl", root.display()), active: true }],
+        models: vec![ModelRow { id: 1, path: sneaky.clone(), active: true }, ModelRow { id: 2, path: row("./keep.stl"), active: true }],
         companions: vec![CompanionRow { id: 1, file_id: 1, name: "n".into(), path: sneaky }],
     };
     let r = report(&snapshot, &[&root]);
@@ -314,4 +317,191 @@ fn a_writer_can_commit_while_the_disk_is_scanned() {
     let r = build_report(&snap, std::slice::from_ref(&root), limits);
     assert!(committed.load(std::sync::atomic::Ordering::SeqCst), "the walk never ran the hook");
     assert!(!r.truncated);
+}
+
+fn folder_rows(root: &Path, names: &[&str]) -> Vec<(i64, String)> {
+    names.iter().enumerate().map(|(i, n)| (i as i64 + 1, root.join(n).to_str().unwrap().to_string())).collect()
+}
+
+#[test]
+fn folder_check_reports_only_directories_that_are_gone() {
+    let root = dir("dr-folders");
+    fs::create_dir_all(root.join("here/sub")).unwrap();
+    fs::write(root.join("keep.txt"), b"x").unwrap();
+    let rows = folder_rows(&root, &["here", "here/sub", "gone", "here/gone/deeper"]);
+    let (missing, truncated) = missing_folder_ids(&rows, std::slice::from_ref(&root), Limits::default());
+    assert_eq!(missing, HashSet::from([3, 4]));
+    assert!(!truncated);
+}
+
+#[test]
+fn folder_check_skips_the_root_itself_and_paths_outside_every_root() {
+    let root = dir("dr-folders-out");
+    let other = dir("dr-folders-other");
+    fs::write(root.join("keep.txt"), b"x").unwrap();
+    let rows = vec![(1, root.to_str().unwrap().to_string()), (2, other.join("nowhere").to_str().unwrap().to_string())];
+    let (missing, _) = missing_folder_ids(&rows, std::slice::from_ref(&root), Limits::default());
+    assert!(missing.is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn folder_check_does_not_follow_links_and_calls_them_unknown() {
+    let root = dir("dr-folders-link");
+    let outside = dir("dr-folders-link-target");
+    fs::create_dir_all(outside.join("inside")).unwrap();
+    std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
+    fs::write(root.join("keep.txt"), b"x").unwrap();
+    // The first folder exists behind the link, the second does not; neither may be judged.
+    let rows = folder_rows(&root, &["link/inside", "link/absent"]);
+    let (missing, _) = missing_folder_ids(&rows, std::slice::from_ref(&root), Limits::default());
+    assert!(missing.is_empty());
+}
+
+#[test]
+fn folder_check_trusts_neither_an_empty_nor_an_unreachable_root() {
+    let empty = dir("dr-folders-empty");
+    let rows = folder_rows(&empty, &["a"]);
+    assert!(missing_folder_ids(&rows, std::slice::from_ref(&empty), Limits::default()).0.is_empty());
+    let absent = empty.join("not-mounted");
+    let rows = folder_rows(&absent, &["a"]);
+    assert!(missing_folder_ids(&rows, std::slice::from_ref(&absent), Limits::default()).0.is_empty());
+}
+
+#[test]
+fn folder_check_stops_at_its_entry_limit_and_says_so() {
+    let root = dir("dr-folders-limit");
+    fs::write(root.join("keep.txt"), b"x").unwrap();
+    let rows = folder_rows(&root, &["a", "b", "c"]);
+    let limits = Limits { max_entries: 2, ..Limits::default() };
+    let (missing, truncated) = missing_folder_ids(&rows, std::slice::from_ref(&root), limits);
+    assert_eq!(missing, HashSet::from([1, 2]));
+    assert!(truncated);
+}
+
+#[test]
+fn excluded_folders_are_not_walked_and_ordered_roots_match_the_report_indexes() {
+    let root = dir("dr-excluded");
+    touch(&root.join("uploads/a.3mf"));
+    touch(&root.join("uploads/deep/b.3mf"));
+    touch(&root.join("ok/c.3mf"));
+    let snapshot = Snapshot::default();
+    let configured = vec![root.clone()];
+    let plain = build_report(&snapshot, &configured, Limits::default());
+    assert_eq!(plain.new_files.len(), 3);
+    let excluded = [root.join("uploads"), root.join("does-not-exist")];
+    let r = build_report_with(&snapshot, &configured, ReportOptions { limits: Limits::default(), excluded: &excluded });
+    let new: Vec<_> = r.new_files.iter().map(|f| f.relative_path.as_str()).collect();
+    assert_eq!(new, vec!["ok/c.3mf"]);
+    // Without exclusions the new entry point reports exactly what the old one did.
+    assert_eq!(build_report_with(&snapshot, &configured, ReportOptions { limits: Limits::default(), excluded: &[] }), plain);
+
+    // A root inside an excluded folder is not walked at all.
+    let inner = build_report_with(&snapshot, &[root.join("uploads")], ReportOptions { limits: Limits::default(), excluded: &[root.join("uploads")] });
+    assert!(inner.new_files.is_empty());
+
+    // Index order: shallow roots first, the same for the report and for `ordered_roots`.
+    let deep = dir("dr-order").join("x/y");
+    fs::create_dir_all(&deep).unwrap();
+    touch(&deep.join("deep.3mf"));
+    let shallow = dir("dr-order-shallow");
+    touch(&shallow.join("s.3mf"));
+    let configured = vec![deep.clone(), shallow.clone()];
+    let ordered = ordered_roots(&configured);
+    assert_eq!(ordered, vec![shallow.clone(), deep.clone()]);
+    let r = build_report(&snapshot, &configured, Limits::default());
+    let by_index: Vec<_> = r.new_files.iter().map(|f| (f.root, f.relative_path.clone())).collect();
+    assert_eq!(by_index, vec![(0, "s.3mf".to_owned()), (1, "deep.3mf".to_owned())]);
+}
+
+#[cfg(unix)]
+mod unclear_and_folders {
+    use super::*;
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    fn unclear(r: &DiskReport) -> Vec<(usize, &str, UnclearReason)> {
+        r.unclear.iter().map(|u| (u.root, u.relative_path.as_str(), u.reason)).collect()
+    }
+
+    #[test]
+    fn a_deleted_subfolder_with_several_models_becomes_one_missing_folder() {
+        let root = dir("dr-gone-folder");
+        touch(&root.join("keep/here.3mf"));
+        let snapshot = Snapshot {
+            models: vec![
+                model(1, &root.join("old/a.3mf"), true),
+                model(2, &root.join("old/deeper/b.3mf"), true),
+                model(3, &root.join("keep/lost.3mf"), true),
+                model(4, &root.join("keep/here.3mf"), true),
+            ],
+            companions: vec![],
+        };
+        let r = report(&snapshot, &[&root]);
+        assert_eq!(r.missing_models.len(), 3);
+        assert_eq!(r.missing_folders, vec![MissingFolder { root: 0, relative_path: "old".into(), models: vec!["1".into(), "2".into()] }]);
+        assert!(r.unclear.is_empty());
+        let json = serde_json::to_value(&r).unwrap();
+        assert_eq!(json["missingFolders"][0]["relativePath"], "old");
+    }
+
+    #[test]
+    fn a_file_or_a_link_on_the_way_is_unclear_never_missing() {
+        let root = dir("dr-unclear-way");
+        let outside = dir("dr-unclear-way-out");
+        touch(&root.join("plain"));
+        touch(&outside.join("m.3mf"));
+        symlink(&outside, root.join("link")).unwrap();
+        let snapshot = Snapshot {
+            models: vec![model(1, &root.join("plain/m.3mf"), true), model(2, &root.join("link/m.3mf"), true)],
+            companions: vec![companion(9, 1, &root.join("plain/x/pic.png"))],
+        };
+        let r = report(&snapshot, &[&root]);
+        assert!(r.missing_models.is_empty() && r.missing_folders.is_empty() && r.dangling_companions.is_empty());
+        assert_eq!(
+            unclear(&r),
+            vec![(0, "link/m.3mf", UnclearReason::Link), (0, "plain/m.3mf", UnclearReason::Link), (0, "plain/x/pic.png", UnclearReason::Link)]
+        );
+    }
+
+    #[test]
+    fn a_folder_without_permission_is_unclear_with_reason_read() {
+        let root = dir("dr-chmod");
+        touch(&root.join("locked/m.3mf"));
+        touch(&root.join("other.3mf"));
+        fs::set_permissions(root.join("locked"), fs::Permissions::from_mode(0o000)).unwrap();
+        let denied = fs::read_dir(root.join("locked")).is_err();
+        let snapshot = Snapshot { models: vec![model(1, &root.join("locked/m.3mf"), true)], companions: vec![] };
+        let r = report(&snapshot, &[&root]);
+        fs::set_permissions(root.join("locked"), fs::Permissions::from_mode(0o755)).unwrap();
+        if denied {
+            assert!(r.missing_models.is_empty());
+            assert_eq!(unclear(&r), vec![(0, "locked/m.3mf", UnclearReason::Read)]);
+        }
+    }
+
+    #[test]
+    fn rows_below_an_unreachable_or_empty_root_are_unclear_unreachable() {
+        let gone = dir("dr-root-gone").join("not-there");
+        let empty = dir("dr-root-empty");
+        let snapshot = Snapshot {
+            models: vec![model(1, &gone.join("a.3mf"), true), model(2, &empty.join("b.3mf"), true), model(3, &empty.join("t.3mf"), false)],
+            companions: vec![],
+        };
+        let r = report(&snapshot, &[&gone, &empty]);
+        assert!(r.missing_models.is_empty());
+        assert_eq!(r.unclear.len(), 2, "trashed rows are not listed: {:?}", r.unclear);
+        assert!(r.unclear.iter().all(|u| u.reason == UnclearReason::Unreachable));
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(!json.contains(empty.to_str().unwrap()) && !json.contains(gone.to_str().unwrap()));
+    }
+
+    #[test]
+    fn nothing_new_is_serialized_when_there_is_nothing_to_say() {
+        let root = dir("dr-quiet");
+        touch(&root.join("a.3mf"));
+        let snapshot = Snapshot { models: vec![model(1, &root.join("a.3mf"), true)], companions: vec![] };
+        let json = serde_json::to_value(report(&snapshot, &[&root])).unwrap();
+        assert!(json.get("unclear").is_none());
+        assert_eq!(json["missingFolders"], serde_json::json!([]), "the field is always present, also empty");
+    }
 }

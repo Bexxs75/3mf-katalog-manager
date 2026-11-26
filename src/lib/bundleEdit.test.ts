@@ -75,9 +75,15 @@ describe('planBundleEdit', () => {
     expect(plan.dissolve).toBe(false);
   });
 
-  it('dissolves when fewer than two living members stay', () => {
-    const plan = planBundleEdit(b, { name: 'Holder', kind: 'variants', rows: [row('1', 'big'), row('2', '', false), row('3', 'small', false)] });
+  it('dissolves when no living member stays', () => {
+    const plan = planBundleEdit(b, { name: 'Holder', kind: 'variants', rows: [row('1', 'big', false), row('2', '', false), row('3', 'small', false)] });
     expect(plan.dissolve).toBe(true);
+  });
+
+  it('keeps a bundle with a single remaining member', () => {
+    const plan = planBundleEdit(b, { name: 'Holder', kind: 'variants', rows: [row('1', 'big'), row('2', '', false), row('3', 'small', false)] });
+    expect(plan.dissolve).toBe(false);
+    expect(plan.removeIds).toEqual(['2', '3']);
   });
 
   it('keeps a member in the trash in its place while the living ones are ordered', () => {
@@ -118,9 +124,12 @@ describe('selectionBundleState', () => {
   it('ignores a member in the trash when it checks the cover', () => {
     const withTrash = bundle('t', [['1', 0], ['2', 1], ['9', 2, null, true]]);
     expect(selectionBundleState(['1', '2'], [withTrash]).exact?.id).toBe('t');
-    // One living member is no card, so there is nothing to cover.
+    // One living member is a card of its own and can be covered.
     const single = bundle('s', [['1', 0], ['9', 1, null, true]]);
-    expect(selectionBundleState(['1'], [single]).covered).toEqual([]);
+    expect(selectionBundleState(['1'], [single]).covered.map(c => c.id)).toEqual(['s']);
+    // A bundle without a living member is nothing to cover.
+    const gone = bundle('g', [['9', 0, null, true]]);
+    expect(selectionBundleState(['1'], [gone]).covered).toEqual([]);
   });
 });
 

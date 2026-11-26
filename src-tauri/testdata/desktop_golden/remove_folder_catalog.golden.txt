@@ -1,0 +1,68 @@
+== steps ==
+[
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "invalidCatalogId"
+      }
+    },
+    "step": "invalid id"
+  },
+  {
+    "result": {
+      "ok": {
+        "folderCount": 2,
+        "modelCount": 2
+      }
+    },
+    "step": "remove top (files stay on disk)"
+  }
+]
+
+== tables ==
+[folders] 1 row(s)
+  id=3 | name=other | parent_id=NULL | path=<ROOT>/other
+[files] 1 row(s)
+  id=3 | name=c.3mf | path=<ROOT>/other/c.3mf | file_type=3mf | folder_id=3 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 0 row(s)
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 1 row(s)
+  id=1 | name=red | color_hue=10
+[file_tags] 1 row(s)
+  file_id=3 | tag_id=1
+[file_metadata] 1 row(s)
+  file_id=3 | label=k | value=v3
+[file_materials] 1 row(s)
+  id=3 | file_id=3 | name=PLA3 | display_color=#ff0000
+[collections] 1 row(s)
+  id=1 | name=set | created_at=<TS>
+[collection_files] 1 row(s)
+  collection_id=1 | file_id=3 | position=3
+[print_log] 1 row(s)
+  id=3 | file_id=3 | printed_at=<TS> | note=n3 | photo_png=NULL | created_at=<TS>
+[file_print_info] 1 row(s)
+  file_id=3 | reader_version=1 | read_at=<TS> | slice_state=sliced | settings_state=read | printer_model=NULL | bed_type=NULL | layer_height_mm=NULL | nozzle_mm=NULL | nozzle_mixed=0 | bed_temp_c=NULL | bed_temp_mixed=0 | nozzle_temp_c=NULL | nozzle_temp_mixed=0 | filament_colors=NULL
+[file_print_plates] 1 row(s)
+  file_id=3 | plate_index=1 | plate_name=plate3 | print_seconds=NULL | first_layer_seconds=NULL | plate_bed_type=NULL
+[printers] 1 row(s)
+  id=1 | name=P1 | position=0 | kind=filament | manufacturer=NULL | model=NULL | nozzle_mm=NULL | bed_x_mm=NULL | bed_y_mm=NULL | bed_z_mm=NULL
+[printer_jobs] 3 row(s)
+  id=1 | printer_id=1 | remote_id=job1 | file_name=f1.3mf | outcome=completed | raw_status=ok | ended_at=1 | print_duration_s=1 | used_mm=1 | slicer_total_mm=NULL | slicer_weight_g=NULL | material=NULL | thumbnail_path=NULL | state=open | booked_spool_id=NULL | booked_file_id=NULL | booked_g=NULL | decided_at=NULL | failure_reason=NULL | failure_note=NULL | auto_closed=0
+  id=2 | printer_id=1 | remote_id=job2 | file_name=f2.3mf | outcome=completed | raw_status=ok | ended_at=1 | print_duration_s=1 | used_mm=1 | slicer_total_mm=NULL | slicer_weight_g=NULL | material=NULL | thumbnail_path=NULL | state=open | booked_spool_id=NULL | booked_file_id=NULL | booked_g=NULL | decided_at=NULL | failure_reason=NULL | failure_note=NULL | auto_closed=0
+  id=3 | printer_id=1 | remote_id=job3 | file_name=f3.3mf | outcome=completed | raw_status=ok | ended_at=1 | print_duration_s=1 | used_mm=1 | slicer_total_mm=NULL | slicer_weight_g=NULL | material=NULL | thumbnail_path=NULL | state=open | booked_spool_id=NULL | booked_file_id=3 | booked_g=NULL | decided_at=NULL | failure_reason=NULL | failure_note=NULL | auto_closed=0
+[slicer_reports] 3 row(s)
+  id=1 | reported_at=<TS> | reported_path=r1 | file_name=f1.3mf | file_size_bytes=1 | slicer=NULL | summary_json={} | state=open | suggested_file_id=NULL | model_file_id=NULL | decided_at=NULL
+  id=2 | reported_at=<TS> | reported_path=r2 | file_name=f2.3mf | file_size_bytes=1 | slicer=NULL | summary_json={} | state=open | suggested_file_id=NULL | model_file_id=NULL | decided_at=NULL
+  id=3 | reported_at=<TS> | reported_path=r3 | file_name=f3.3mf | file_size_bytes=1 | slicer=NULL | summary_json={} | state=open | suggested_file_id=3 | model_file_id=3 | decided_at=NULL
+
+== tree ==
+other/
+other/c.3mf (22 bytes)
+top/
+top/a.3mf (20 bytes)
+top/sub/
+top/sub/b.3mf (24 bytes)

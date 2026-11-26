@@ -1,0 +1,50 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": {
+        "failed": [],
+        "keptOnDisk": [],
+        "removedFolderCount": 2,
+        "trashedModelCount": 1
+      }
+    },
+    "step": "trash the top-level folder (no catalog base set)"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "restore (outermost directory becomes a top-level folder row)"
+  }
+]
+
+== tables ==
+[folders] 2 row(s)
+  id=3 | name=top | parent_id=NULL | path=<ROOT>/top
+  id=4 | name=sub | parent_id=3 | path=<ROOT>/top/sub
+[files] 1 row(s)
+  id=1 | name=m.3mf | path=<ROOT>/top/sub/m.3mf | file_type=3mf | folder_id=4 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 0 row(s)
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+top/
+top/sub/
+top/sub/m.3mf (13 bytes)
+trash/

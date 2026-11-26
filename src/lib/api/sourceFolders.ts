@@ -1,5 +1,5 @@
 import { invoke } from '../transport';
-import type { SourceFolder, SourceScan, StartedImport } from '../../types';
+import type { SourceDirListing, SourceFolder, SourceScan, StartedImport } from '../../types';
 
 export function listSourceFolders() {
   return invoke<SourceFolder[]>('list_source_folders');
@@ -7,6 +7,14 @@ export function listSourceFolders() {
 // `path` must come from pickFolderPath (the folder the user chose in the dialog).
 export function addSourceFolder(path: string) {
   return invoke<SourceFolder>('add_source_folder', { path });
+}
+// Web: the server never accepts a free path, only a configured root plus a path below it.
+export function addServerSourceFolder(rootIdx: number, rel: string) {
+  return invoke<SourceFolder>('add_source_folder', { rootIdx, rel });
+}
+// Web: immediate children of a server folder; without arguments only the list of roots.
+export function listSourceDirs(rootIdx?: number, rel = '') {
+  return invoke<SourceDirListing>('list_source_dirs', rootIdx === undefined ? {} : { rootIdx, rel });
 }
 // Forgets the folder; its files are never touched.
 export function removeSourceFolder(id: string) {

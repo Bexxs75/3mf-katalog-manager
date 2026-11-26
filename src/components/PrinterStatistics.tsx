@@ -59,7 +59,6 @@ export function PrinterStatistics({ printers, printerId, refreshKey }: {
   const { language } = useLanguage();
   const formatCount = useFormatCount();
   const reasonText = useFailureReasonText();
-  const isWeb = import.meta.env.VITE_TARGET === 'web';
   const headingId = useId();
   const selectId = useId();
   const [scope, setScope] = useState<string>(ALL);
@@ -139,14 +138,13 @@ export function PrinterStatistics({ printers, printerId, refreshKey }: {
       </div>
       {/* Spoken after every change of printer, period or data; the card itself is not announced. */}
       <p role="status" className="sr-only">{ready ? t('pstAnnounce').replace('{printer}', () => scopeName).replace('{range}', rangeName).replace('{count}', String(sum.total)) : ''}</p>
-      {isWeb && <Note>{t('pstWeb')}</Note>}
       {since && <p className="text-[var(--ink-3)]">{t('pstSince').replace('{date}', since)}</p>}
       {data?.truncated && <Note title={t('pstTruncatedTitle')}>{t('pstTruncatedBody')}</Note>}
       {error && <div role="alert" className="text-[var(--crit)]"><b>{t('pstLoadFailed')}</b> <ErrorText error={error} /></div>}
       {!ready && !error && <p className="text-[var(--ink-3)]">{t('pstLoading')}</p>}
       {ready && all.length === 0 && <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] flex flex-col items-center gap-2 px-3.5 py-8 text-center">
         <Icon name="printer" size={24} /><b>{t('pstEmptyTitle')}</b>
-        <p className="max-w-[46ch] text-[var(--ink-3)]">{t(isWeb ? 'pstEmptyBodyWeb' : 'pstEmptyBody')}</p>
+        <p className="max-w-[46ch] text-[var(--ink-3)]">{t('pstEmptyBody')}</p>
       </div>}
       {ready && all.length > 0 && rows.length === 0 && <p className="text-[var(--ink-3)]">{t('pstEmptyRange')}</p>}
       {ready && rows.length > 0 && <>

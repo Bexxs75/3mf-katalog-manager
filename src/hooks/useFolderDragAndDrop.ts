@@ -77,11 +77,14 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     hoveredFolderId.current = null;
   }, []);
 
-  const onDragFileStart = useCallback((id: string) => {
+  // A bundle card passes its living members: the bundle travels as a whole. If the selection already
+  // holds all of them, the whole selection travels, like with a single card.
+  const onDragFileStart = useCallback((id: string, memberIds?: readonly string[]) => {
     if (!canEditMetadata()) return;
     fileDragCancelled.current = false;
     setDraggedFileId(id);
-    setDraggedFileIds(selectedIds?.has(id) ? [...selectedIds] : [id]);
+    const bundleSelected = memberIds && memberIds.length > 0 && selectedIds && memberIds.every(member => selectedIds.has(member));
+    setDraggedFileIds(memberIds && memberIds.length > 0 ? (bundleSelected ? [...selectedIds] : [...memberIds]) : selectedIds?.has(id) ? [...selectedIds] : [id]);
   }, [selectedIds]);
   // A click without hovering over another row moves nothing. Folders that
   // cannot be moved are still draggable, so dropping them explains the refusal.
@@ -153,13 +156,20 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     const nameOf = (id: string) => models.find((m) => m.id === id)?.name ?? id;
     if (!canManageFiles()) return;
     if (isReadOnly()) {
-      // The web server reports plain per-file results and has no move history, so the toast stays simple.
+      // The web server reports no previous folder, so the undo steps come from the folders the
+      // loaded files were in. Files already in the target stay out: putting them back is a no-op.
+      const items = ids.flatMap((id) => {
+        const fromFolderId = models.find((m) => m.id === id)?.folderId;
+        return fromFolderId && fromFolderId !== folderId ? [{ fileId: id, fromFolderId }] : [];
+      });
       const label = ids.length > 1 ? `${nameOf(ids[0])} (+${ids.length - 1})` : nameOf(ids[0]);
       if (!window.confirm(`${currentDictionary().folderOpMoveFile}\n${label} → ${target.name}`) || !canManageFiles()) return;
       try {
         await foldersApi.moveFilesToFolderWeb(ids, folderId);
         dismissDragDropTip();
-        setMoveToast({ from: label, to: target.name });
+        // A failed batch throws before this point, so only a fully applied move can be undone.
+        if (items.length > 0) recordUndo({ kind: 'moveFiles', items });
+        setMoveToast({ from: label, to: target.name, canUndo: items.length > 0 });
       } catch (e) {
         setMoveToast(failureToast(label, e));
       }
@@ -202,13 +212,19 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         let failure: AppError | undefined;
         for (const [folderId, fileIds] of groupByOldFolder(step.items)) {
           try {
+            if (isReadOnly()) {
+              // The web batch resolves only when every file was moved and throws otherwise.
+              await foldersApi.moveFilesToFolderWeb(fileIds, folderId);
+              moved += fileIds.length;
+              continue;
+            }
             const results = await foldersApi.moveFilesToFolder(fileIds, folderId);
             for (const result of results) {
               if (result.status === 'moved') moved++;
               else if (!reason && !failure) reason = result.status === 'skipped' ? 'name_exists' : result.reason;
             }
           } catch (e) {
-            console.error('[folders] undo of file move failed:', e);
+            if (!isReadOnly()) console.error('[folders] undo of file move failed:', e);
             if (!reason && !failure) failure = toAppError(e);
           }
         }
@@ -296,12 +312,12 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         .moveFolder(folderId, targetId)
         .then(() => {
           // The old parent has to be remembered now: after the reload the folder only knows its new one.
+          if (fromParentId) recordUndo({ kind: 'moveFolder', folderId, name: folder.name, fromParentId });
           if (isReadOnly()) {
-            // The web file operations refresh every view themselves and keep no undo history.
-            setMoveToast({ from: folder.name, to: targetFolder.name });
+            // The web file operations refresh every view themselves.
+            setMoveToast({ from: folder.name, to: targetFolder.name, canUndo: !!fromParentId });
             return;
           }
-          if (fromParentId) recordUndo({ kind: 'moveFolder', folderId, name: folder.name, fromParentId });
           setMoveToast({ from: folder.name, to: targetFolder.path, canUndo: !!fromParentId });
           refreshFolders();
           refreshFiles();

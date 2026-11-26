@@ -87,6 +87,25 @@ pub fn write_zip(db_file: &Path, settings_json: &str, out: File) -> io::Result<F
     zip.finish().map_err(io::Error::other)
 }
 
+/// Writes the backup archive to `dest` via a private temp file next to it and renames it into
+/// place only when complete: never a partial archive at the destination. The temp name is
+/// unpredictable and created exclusively, so a symlink planted under a guessable name cannot
+/// redirect the write. The archive file is closed before the rename (Windows refuses to
+/// replace a file that is still open).
+pub fn write_zip_atomically(db_file: &Path, settings_json: &str, dest: &Path) -> io::Result<()> {
+    let parent = dest.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let base = dest.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let (tmp_path, file) = crate::safe_file::create_private_temp(parent, &format!(".{base}"), ".tmp")?;
+    let written = (|| {
+        write_zip(db_file, settings_json, file)?.sync_all()?;
+        std::fs::rename(&tmp_path, dest)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+    written
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -200,6 +219,8 @@ mod tests {
                 .unwrap();
             assert_eq!(found, 1, "{table}.{column}");
         }
+        // Windows cannot remove a folder that holds an open database.
+        drop((copy, reader, writer));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -259,14 +280,17 @@ mod tests {
             assert_eq!(counts.0, counts.1, "round {round}");
         }
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        // Joining drops the writer, which the thread owns.
         assert!(thread.join().unwrap() > 1);
+        // Windows cannot remove a folder that holds an open database.
+        drop(reader);
         std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn zip_has_the_desktop_entry_layout_and_the_database_round_trips() {
         let dir = unique_test_dir("export-zip");
-        let (path, _writer) = seeded(&dir);
+        let (path, writer) = seeded(&dir);
         let reader = db::open_read_only(&path).unwrap();
         let snapshot_path = empty_target(&dir, "snap.db");
         snapshot(&reader, &snapshot_path).unwrap();
@@ -286,6 +310,8 @@ mod tests {
         for key in crate::ui_settings::BACKUP_KEYS {
             assert!(parsed[key].is_null(), "{key}");
         }
+        // Windows cannot remove a folder that holds open files.
+        drop((archive, reader, writer));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -307,6 +333,8 @@ mod tests {
         assert!(started.elapsed() >= std::time::Duration::from_millis(150), "{:?}", started.elapsed());
         holder.execute_batch("ROLLBACK").unwrap();
         snapshot_with(&reader, &dest, 4, std::time::Duration::from_millis(50)).unwrap();
+        // Windows cannot remove a folder that holds an open database.
+        drop((reader, holder));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -315,5 +343,58 @@ mod tests {
         let conn = db::connect_in_memory().unwrap();
         let bytes = database_bytes(&conn).unwrap();
         assert!(bytes > 0 && bytes.is_multiple_of(512));
+    }
+
+    /// Moved from the desktop `backup` tests, now against the shared writer.
+    #[cfg(unix)]
+    #[test]
+    fn backup_zip_ignores_a_planted_temp_symlink_and_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = unique_test_dir("backup_zip_symlink");
+        let dest = dir.join("backup.zip");
+        let victim = dir.join("victim.txt");
+        std::fs::write(&victim, b"KEEP").unwrap();
+        std::os::unix::fs::symlink(&victim, dir.join("backup.zip.tmp")).unwrap();
+        let db_file = dir.join("db.bin");
+        std::fs::write(&db_file, b"DB").unwrap();
+
+        write_zip_atomically(&db_file, "{}", &dest).unwrap();
+
+        assert_eq!(std::fs::read(&victim).unwrap(), b"KEEP");
+        assert_eq!(std::fs::metadata(&dest).unwrap().permissions().mode() & 0o777, 0o600);
+        let mut zip = zip::ZipArchive::new(File::open(&dest).unwrap()).unwrap();
+        assert_eq!(zip.len(), 2);
+        assert_eq!(zip.by_name("catalog.db").unwrap().size(), 2);
+        let leftovers: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .filter(|n| n.ends_with(".tmp") && n != "backup.zip.tmp")
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+    }
+
+    #[test]
+    fn atomic_write_replaces_an_existing_target_leaves_no_temp_and_reads_back() {
+        let dir = unique_test_dir("export_atomic");
+        let (path, conn) = seeded(&dir);
+        let snap = dir.join("snap.db");
+        File::create(&snap).unwrap();
+        snapshot(&conn, &snap).unwrap();
+        let dest = dir.join("backup.zip");
+        std::fs::write(&dest, b"old content").unwrap();
+        let settings = r#"{"a":"1","b":null}"#;
+        write_zip_atomically(&snap, settings, &dest).unwrap();
+
+        let (db_bytes, stored) = crate::catalog_restore::read_catalog_archive(File::open(&dest).unwrap()).unwrap();
+        assert_eq!(stored, settings);
+        assert_eq!(db_bytes, std::fs::read(&snap).unwrap());
+        let names: Vec<String> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+        assert!(!names.iter().any(|n| n.ends_with(".tmp")), "{names:?}");
+
+        // A missing destination folder fails and leaves nothing behind.
+        let missing = dir.join("no-such-folder").join("backup.zip");
+        assert!(write_zip_atomically(&snap, settings, &missing).is_err());
+        assert!(!missing.exists());
+        let _ = path;
     }
 }

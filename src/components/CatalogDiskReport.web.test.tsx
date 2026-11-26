@@ -8,7 +8,9 @@ import { fr } from '../i18n/fr';
 import type { DiskReport } from '../lib/api/diskSync';
 
 const api = vi.hoisted(() => ({ report: vi.fn() }));
-vi.mock('../lib/api/diskSync', () => ({ diskSyncReport: api.report }));
+vi.mock('../lib/api/diskSync', async importOriginal => ({ ...await importOriginal<typeof import('../lib/api/diskSync')>(), diskSyncReport: api.report }));
+// Without file actions on the server the dialog stays a display-only list.
+vi.mock('../lib/webSession', async importOriginal => ({ ...await importOriginal<typeof import('../lib/webSession')>(), useCanManageFiles: () => false }));
 
 import { CatalogDiskReport } from './CatalogDiskReport';
 
@@ -33,6 +35,17 @@ beforeEach(() => { api.report.mockReset(); localStorage.clear(); });
 afterEach(() => cleanup());
 
 describe('CatalogDiskReport', () => {
+  it('keeps the trigger enabled while the dialog is open, so closing can give it the focus back', async () => {
+    api.report.mockResolvedValue(clean);
+    show();
+    const trigger = screen.getByRole('button', { name: de.diskReportOpen });
+    trigger.focus();
+    const dialog = await open();
+    expect(trigger).toBeEnabled();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(trigger).toHaveFocus();
+  });
   it('checks nothing until the button is pressed, then lists the three findings with their root', async () => {
     api.report.mockResolvedValue(findings);
     show();

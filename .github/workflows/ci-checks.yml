@@ -5,8 +5,13 @@ on:
     branches:
       - master
       - "release/**"
+      - "dev/**"
   pull_request: {}
   workflow_dispatch: {}
+
+# Least privilege: the jobs only read the repository (and the release via the read-only token).
+permissions:
+  contents: read
 
 jobs:
   ci-checks:
@@ -121,9 +126,43 @@ jobs:
         shell: pwsh
         run: .\src-tauri\scripts\stage-vc-runtime.ps1
 
-      # Only the portable file layer: other core tests are not proven on Windows/macOS yet.
+      # The portable file layer first: when it fails, the rest of the core fails for the same reason.
       - name: Test the portable file operations of the core
         run: "cargo test -p katalog-core --no-default-features fs_portable::"
+
+      # Whole core test suite and the desktop command tests (incl. golden scenarios) on the real
+      # systems: file locks, path spelling and case folding differ from Linux.
+      - name: Test the core (all modules)
+        run: cargo test -p katalog-core --no-default-features
+
+      # tauri-build embeds the application manifest (common controls 6, which the dialog
+      # plugin needs) into the app binary only. The test executable of the library has none,
+      # so Windows ends it with STATUS_ENTRYPOINT_NOT_FOUND before a single test runs. A
+      # manifest file next to an executable is used when none is embedded.
+      - name: Give the desktop test executable a manifest (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo test -p mf-katalog-manager --no-default-features --lib --no-run
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $manifest = @'
+          <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+            <dependency>
+              <dependentAssembly>
+                <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*" />
+              </dependentAssembly>
+            </dependency>
+          </assembly>
+          '@
+          $exes = @(Get-ChildItem -Path src-tauri/target/debug -Recurse -Filter 'mf_katalog_manager_lib-*.exe')
+          if ($exes.Count -eq 0) { throw 'test executable of the desktop library not found' }
+          foreach ($exe in $exes) {
+            Set-Content -Path "$($exe.FullName).manifest" -Value $manifest -Encoding utf8
+            Write-Host "manifest written next to $($exe.FullName)"
+          }
+
+      - name: Test the desktop commands and golden scenarios
+        run: "cargo test -p mf-katalog-manager --no-default-features commands::"
 
       # Only the desktop crate and the core it depends on: the web server is Linux/Docker only.
       - name: Compile the desktop app (core included)

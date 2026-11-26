@@ -16,7 +16,7 @@ function bundle(id: string, members: BundleMember[], extra: Partial<Bundle> = {}
 
 describe('bundle limits', () => {
   it('match the backend', () => {
-    expect([MIN_BUNDLE_MEMBERS, MAX_BUNDLE_MEMBERS]).toEqual([2, 200]);
+    expect([MIN_BUNDLE_MEMBERS, MAX_BUNDLE_MEMBERS]).toEqual([1, 200]);
   });
 });
 
@@ -72,10 +72,21 @@ describe('buildCards', () => {
     expect(card.title.id).toBe('2');
   });
 
-  it('leaves a single visible member a single card marked as part of the bundle', () => {
+  it('shows a bundle of one visible member as a bundle card', () => {
     const cards = buildCards(models.slice(0, 2), [bundle('b', [member('1', 0), member('9', 1)], { kind: 'variants' })], { collapse: true });
-    expect(cards[0]).toMatchObject({ type: 'model', key: '1', partOf: { bundleId: 'b', name: 'Bundle b', kind: 'variants' } });
+    expect(cards[0]).toMatchObject({ type: 'bundle', key: 'bundle:b' });
+    expect((cards[0] as BundleCard).visibleMembers.map(m => m.model.id)).toEqual(['1']);
     expect(cards[1]).toMatchObject({ type: 'model', key: '2', partOf: null });
+  });
+
+  it('shows a bundle of a single file as a bundle card', () => {
+    const cards = buildCards(models.slice(0, 2), [bundle('b', [member('1', 0)])], { collapse: true });
+    expect(cards.map(c => c.key)).toEqual(['bundle:b', '2']);
+  });
+
+  it('leaves a model a single card when its only bundle member is in the trash', () => {
+    const cards = buildCards(models.slice(0, 1), [bundle('b', [member('1', 0, { inTrash: true })])], { collapse: true });
+    expect(cards[0]).toMatchObject({ type: 'model', key: '1' });
   });
 
   it('does not count a member in the trash as visible or living', () => {
@@ -97,13 +108,13 @@ describe('buildCards', () => {
     expect(cards.map(c => c.key)).toEqual(['bundle:a', 'bundle:b']);
   });
 
-  it('works on the result of the filters: a filter that keeps one member leaves a marked single card', () => {
+  it('works on the result of the filters: a filter that keeps one member keeps the bundle card', () => {
     const all = [makeModelFile({ id: '1', name: 'Vase body' }), makeModelFile({ id: '2', name: 'Vase lid' }), makeModelFile({ id: '3', name: 'Other' })];
     const b = bundle('b', [member('1', 0), member('2', 1)]);
     const both = filterAndSortModels(all, [], { activeFolderId: 'all', activeTag: null, query: 'vase', sort: 'name' });
     expect(buildCards(both, [b], { collapse: true }).map(c => c.key)).toEqual(['bundle:b']);
     const one = filterAndSortModels(all, [], { activeFolderId: 'all', activeTag: null, query: 'lid', sort: 'name' });
-    expect(buildCards(one, [b], { collapse: true })).toMatchObject([{ type: 'model', key: '2', partOf: { bundleId: 'b' } }]);
+    expect(buildCards(one, [b], { collapse: true })).toMatchObject([{ type: 'bundle', key: 'bundle:b' }]);
   });
 });
 

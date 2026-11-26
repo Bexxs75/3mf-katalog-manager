@@ -59,6 +59,10 @@ fn lock(db: &Mutex<Connection>) -> Result<std::sync::MutexGuard<'_, Connection>,
 pub struct SyncOptions {
     /// "Connect now": ignores the waiting time after failures.
     pub force: bool,
+    /// Cooperative cancellation between requests and while waiting to retry.
+    pub cancel: Option<std::sync::Arc<AtomicBool>>,
+    /// Optional end of the whole pass, shared by every printer.
+    pub deadline: Option<Instant>,
     pub max_parallel: usize,
     /// Pauses before each repetition; its length is the number of repetitions.
     pub retry_pauses: Vec<Duration>,
@@ -70,10 +74,19 @@ impl Default for SyncOptions {
     fn default() -> Self {
         SyncOptions {
             force: false,
+            cancel: None,
+            deadline: None,
             max_parallel: MAX_PARALLEL,
             retry_pauses: RETRY_PAUSES.to_vec(),
             printer_budget: super::moonraker::PRINTER_BUDGET,
         }
+    }
+}
+
+impl SyncOptions {
+    fn cancelled(&self) -> bool {
+        self.cancel.as_ref().is_some_and(|c| c.load(Ordering::SeqCst))
+            || self.deadline.is_some_and(|d| Instant::now() >= d)
     }
 }
 
@@ -126,7 +139,7 @@ pub fn sync_with(db: &Mutex<Connection>, make: &LinkMaker, now: f64, options: &S
     std::thread::scope(|scope| {
         for _ in 0..workers {
             scope.spawn(|| loop {
-                if stop.load(Ordering::SeqCst) {
+                if stop.load(Ordering::SeqCst) || options.cancelled() {
                     break;
                 }
                 let Some((position, item)) = queue.lock().ok().and_then(|mut q| q.pop_front()) else { break };
@@ -226,7 +239,7 @@ fn sync_printer(
     let printer_id = item.printer_id;
     let mut api_key: Option<ApiKey>;
     let identity;
-    if new_jobs.load(Ordering::SeqCst) >= MAX_NEW_JOBS {
+    if options.cancelled() || new_jobs.load(Ordering::SeqCst) >= MAX_NEW_JOBS {
         return Ok(None);
     }
     // The plan was made once at the start and the pass can take a while. So check again briefly
@@ -251,12 +264,13 @@ fn sync_printer(
         }
     }
 
-    let deadline = Instant::now() + options.printer_budget;
+    let deadline = (Instant::now() + options.printer_budget).min(options.deadline.unwrap_or_else(|| Instant::now() + options.printer_budget));
     let mut repetition = 0;
     let result = loop {
         let attempt = make(&item.kind, &item.address, api_key.as_ref()).and_then(|mut link| {
             link.set_deadline(deadline);
             let info = link.test()?;
+            if options.cancelled() { return Err(LinkError::Timeout); }
             let jobs = link.jobs_ended_since(&info, item.since)?;
             Ok((info, jobs))
         });
@@ -267,7 +281,11 @@ fn sync_printer(
                     break Err(e);
                 }
                 log::debug!(target: "drucker", "Drucker {printer_id}: {} , neuer Versuch in {} s", e.code(), pause.as_secs());
-                std::thread::sleep(pause);
+                let until = Instant::now() + pause;
+                while Instant::now() < until {
+                    if options.cancelled() { return Ok(None); }
+                    std::thread::sleep(Duration::from_millis(25).min(until.saturating_duration_since(Instant::now())));
+                }
                 repetition += 1;
                 if !still_wanted(db, printer_id, stop)? {
                     return Ok(None);
@@ -279,6 +297,7 @@ fn sync_printer(
         }
     };
 
+    if options.cancelled() { return Ok(None); }
     let conn = lock(db)?;
     // The connection may have been removed, re-created or pointed at another printer during the
     // network request; then the result must not be written anymore.
@@ -561,7 +580,9 @@ mod tests {
             if target.starts_with("/server/info") {
                 return Some((200, crate::printer_link::fake_moonraker::fixture_bytes("server_info_v0_8_0_209.json")));
             }
-            let jobs: Vec<_> = (0..250).map(|i| serde_json::json!({
+            // Pages of at most 50, as asked for (longer ones are refused).
+            let start: usize = target.split("start=").nth(1).unwrap_or("0").split('&').next().unwrap().parse().unwrap();
+            let jobs: Vec<_> = (start..(start + 50).min(250)).map(|i| serde_json::json!({
                 "job_id": i.to_string(), "end_time": if i == 0 { 1100.0 } else { 1000.0 },
                 "filament_used": 1.0, "filename": "a.gcode", "status": "completed"
             })).collect();
@@ -1294,7 +1315,10 @@ mod tests {
         let free = std::sync::Arc::new(AtomicBool::new(false));
         let (d, f) = (db.clone(), free.clone());
         let make: Box<LinkMaker> = Box::new(move |_, _, _| Ok(Box::new(LockProbe { db: d.clone(), free: f.clone() }) as Box<dyn PrinterLink>));
-        sync_with(&db, &*make, 10.0, &quick()).unwrap();
+        // One worker: with two, the other worker's own short database step can hold the lock at the
+        // moment the probe looks, which says nothing about a lock held during the request.
+        let options = SyncOptions { max_parallel: 1, ..quick() };
+        sync_with(&db, &*make, 10.0, &options).unwrap();
         assert!(free.load(Ordering::SeqCst));
     }
 
@@ -1361,4 +1385,37 @@ mod tests {
         assert_eq!(tries.load(Ordering::SeqCst), 1, "the pause would end after the budget");
         assert!(started.elapsed() < Duration::from_millis(400));
     }
+    #[test]
+    fn cancelled_pass_never_contacts_a_printer() {
+        let db = db_with_printers(1);
+        let make: Box<LinkMaker> = Box::new(|_, _, _| panic!("cancelled pass contacted a printer"));
+        let options = SyncOptions {
+            cancel: Some(std::sync::Arc::new(AtomicBool::new(true))),
+            ..SyncOptions::default()
+        };
+        assert_eq!(sync_with(&db, &*make, 10.0, &options).unwrap(), 0);
+    }
+
+    #[test]
+    fn printer_service_expired_pass_never_contacts_a_printer() {
+        let db = db_with_printers(1);
+        let make: Box<LinkMaker> = Box::new(|_, _, _| panic!("expired pass contacted a printer"));
+        let options = SyncOptions { deadline: Some(Instant::now()), ..SyncOptions::default() };
+        assert_eq!(sync_with(&db, &*make, 10.0, &options).unwrap(), 0);
+    }
+
+    #[test]
+    fn printer_service_cancellation_stops_retries_and_discards_result() {
+        let db = db_with_printers(1);
+        let cancel = std::sync::Arc::new(AtomicBool::new(false));
+        let signal = cancel.clone();
+        let make: Box<LinkMaker> = Box::new(move |_, _, _| {
+            assert!(!signal.swap(true, Ordering::SeqCst), "a cancelled request was retried");
+            Err(LinkError::Timeout)
+        });
+        let options = SyncOptions { cancel: Some(cancel), ..SyncOptions::default() };
+        assert_eq!(sync_with(&db, &*make, 10.0, &options).unwrap(), 0);
+        assert!(get_connection(&db.lock().unwrap(), 1).unwrap().unwrap().last_error.is_none());
+    }
+
 }

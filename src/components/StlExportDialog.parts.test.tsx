@@ -23,7 +23,7 @@ describe('StlExportDialog with a parts choice', () => {
     expect(screen.getByRole('radio', { name: 'Gewählte Teile (2)' })).toBeChecked();
     expect(screen.queryByRole('radio', { name: de.stScopeAll })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: de.stNext }));
-    await waitFor(() => expect(exportModelAsStl).toHaveBeenCalledWith('7', { kind: 'parts', indices: [1, 3] }));
+    await waitFor(() => expect(exportModelAsStl).toHaveBeenCalledWith('7', { kind: 'parts', indices: [1, 3] }, 'binary'));
     expect(await screen.findByText('Getriebe.stl')).toBeInTheDocument();
   });
 
@@ -32,8 +32,16 @@ describe('StlExportDialog with a parts choice', () => {
     open({ indices: [0, 1], initial: 'eachPart' });
     expect(screen.getByRole('radio', { name: de.stScopeEach })).toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: de.stNext }));
-    await waitFor(() => expect(exportModelAsStl).toHaveBeenCalledWith('7', { kind: 'eachPart' }));
+    await waitFor(() => expect(exportModelAsStl).toHaveBeenCalledWith('7', { kind: 'eachPart' }, 'binary'));
     expect(await screen.findByText('12 Dateien gespeichert')).toBeInTheDocument();
+  });
+
+  it('applies the ASCII choice to one file per part, too', async () => {
+    exportModelAsStl.mockResolvedValue({ name: 'Getriebe_Teil*.stl', folder: '/lib', triangles: 8, fileCount: 2, inCatalogFolder: false });
+    open({ indices: [0, 1], initial: 'eachPart' });
+    fireEvent.click(screen.getByRole('radio', { name: de.stFormatAscii }));
+    fireEvent.click(screen.getByRole('button', { name: de.stNext }));
+    await waitFor(() => expect(exportModelAsStl).toHaveBeenCalledWith('7', { kind: 'eachPart' }, 'ascii'));
   });
 
   it('switches between the two choices and disables "chosen parts" when none is left', () => {

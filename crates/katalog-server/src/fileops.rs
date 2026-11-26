@@ -3,9 +3,13 @@
 use super::*;
 use crate::fileops_safety::DestructiveKind;
 use crate::fileops_startup::{DbAdapter, ServerLedger};
-use katalog_core::fsops::{self, FileOps, TrashSnapshot};
+use katalog_core::fsops::{self, FileOps, FolderTrashSnapshot, TrashSnapshot};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
+#[path = "fileops_disksync.rs"]
+pub(crate) mod disksync;
+#[path = "disk_start_sync.rs"]
+pub(crate) mod disk_start_sync;
 type Ops = FileOps<DbAdapter, ServerLedger>;
 pub(super) struct Runtime {
     pub(super) state: Mutex<RuntimeState>,
@@ -17,12 +21,20 @@ pub(super) struct Runtime {
 pub(super) struct RuntimeState {
     ops: Ops,
     snapshots: HashMap<String, Snapshot>,
+    folder_snapshots: HashMap<String, FolderSnapshot>,
+    /// Disk-comparison plans (W2), in memory only.
+    plans: HashMap<String, disksync::Plan>,
 }
 struct Snapshot {
     session: String,
     created: u64,
     snapshot: TrashSnapshot,
     cutoff: Option<chrono::DateTime<chrono::FixedOffset>>,
+}
+struct FolderSnapshot {
+    session: String,
+    created: u64,
+    snapshot: FolderTrashSnapshot,
 }
 impl Runtime {
     pub(super) fn new(ops: Ops) -> Self {
@@ -33,8 +45,18 @@ impl Runtime {
             state: Mutex::new(RuntimeState {
                 ops,
                 snapshots: HashMap::new(),
+                folder_snapshots: HashMap::new(),
+                plans: HashMap::new(),
             }),
         }
+    }
+    pub(super) fn recover_for_restore(&self) -> Result<(), ()> {
+        let mut state = self.state.lock().map_err(|_| ())?;
+        let report = state.ops.recover().map_err(|_| ())?;
+        if !report.manual.is_empty() { return Err(()); }
+        state.ops.finish_recovery().map_err(|_| ())?;
+        if !state.ops.journal.is_empty() { return Err(()); }
+        Ok(())
     }
     fn blocked_response(&self) -> Response {
         (StatusCode::SERVICE_UNAVAILABLE,Json(json!({"kind":"restart_required","message":"restart_required","expected":false,"opIds":*self.op_ids.lock().unwrap()}))).into_response()
@@ -73,10 +95,14 @@ pub(super) fn failure(status: u16, kind: &str) -> Response {
 /// offered and the operation itself refuses a protected one.
 pub(super) async fn list_folders(app: &App) -> Option<Response> {
     let rt = app.fileops.clone().filter(|_| app.config.file_ops)?;
+    let catalog_guard = match app.geometry.barrier.reader() { Ok(g) => g, Err(_) => return Some(crate::barrier::maintenance()) };
     let db_path = app.config.db_path.clone();
+    let roots = app.config.roots.clone();
     let result = tokio::task::spawn_blocking(move || {
+        let _catalog_guard = catalog_guard;
         let conn = katalog_core::db::open_read_only(&db_path).map_err(|e| e.to_string())?;
         let mut folders = katalog_core::read::list_folders(&conn).map_err(|e| e.to_string())?;
+        crate::folder_missing::annotate(&mut folders, &roots);
         if let Ok(state) = rt.state.try_lock() {
             for folder in &mut folders {
                 folder.move_target = state.ops.context.accepts_moves_into(&folder.path);
@@ -124,6 +150,12 @@ pub(super) fn retry(seconds: u64) -> Box<Response> {
         .insert(header::RETRY_AFTER, seconds.to_string().parse().unwrap());
     Box::new(r)
 }
+/// "Remove folder from catalog" needs the password as soon as the folder (with all subfolders)
+/// holds at least this many catalog entries, i.e. any entry at all.
+pub(super) const FOLDER_REMOVE_PASSWORD_FROM: usize = 1;
+/// A comparison with the disk, or one `remove_files_from_catalog` call, that removes at least
+/// this many catalog entries needs the password.
+pub(super) const REMOVAL_PASSWORD_FROM: usize = 50;
 pub(super) fn budget_error(error: crate::fileops_safety::BudgetError) -> Box<Response> {
     match error {
         crate::fileops_safety::BudgetError::LimitExceeded => err(422, "limit_exceeded"),
@@ -142,9 +174,16 @@ enum Command {
     Create(i64, String),
     RenameFolder(i64, String),
     MoveFolder(i64, Option<i64>),
-    RemoveFolder(i64),
+    RemoveFolder(i64, Option<String>),
+    TrashFolderStart(i64),
+    TrashFolderBlock(String),
     CompanionTrash(i64),
     CompanionRestore(i64),
+    DiskPreview(disksync::Selection),
+    DiskApplyStart(String, bool, Option<String>),
+    DiskApplyBlock(String, u64),
+    DatePreview(Vec<i64>, katalog_core::date_rename::DateSource),
+    DateApply(Vec<katalog_core::date_rename::DateRenameItem>),
 }
 fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
     let obj = v.as_object().ok_or_else(|| err(400, "invalid_arguments"))?;
@@ -159,8 +198,15 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
         "create_folder" => &["parentId", "name"],
         "rename_folder" => &["folderId", "name"],
         "move_folder" => &["folderId", "newParentId"],
-        "remove_folder_from_catalog" => &["folderId"],
+        "remove_folder_from_catalog" => &["folderId", "password"],
+        "trash_folder_start" => &["folderId"],
+        "trash_folder_block" => &["token"],
         "remove_companion" | "restore_companion" => &["companionId"],
+        "disk_sync_preview" => &["newFiles", "missingModels", "danglingCompanions"],
+        "disk_sync_apply_start" => &["token", "confirmRemoval", "password"],
+        "disk_sync_apply_block" => &["token", "seq"],
+        "preview_date_rename" => &["fileIds", "dateSource"],
+        "apply_date_rename" => &["items"],
         _ => return Err(err(404, "unknown_command")),
     };
     if obj.keys().any(|k| !keys.contains(&k.as_str())) {
@@ -187,6 +233,14 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
             Ok(None)
         } else {
             id(key).map(Some)
+        }
+    };
+    // Optional password: absent is `None` (the server then decides whether one is required).
+    let optional_password = || -> Result<Option<String>, Box<Response>> {
+        match v.get("password") {
+            None => Ok(None),
+            Some(Value::String(s)) => Ok(Some(s.clone())),
+            Some(_) => Err(err(400, "invalid_arguments")),
         }
     };
     let ids = || -> Result<Vec<i64>, Box<Response>> {
@@ -252,9 +306,27 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
         "create_folder" => Command::Create(id("parentId")?, text("name")?),
         "rename_folder" => Command::RenameFolder(id("folderId")?, text("name")?),
         "move_folder" => Command::MoveFolder(id("folderId")?, nullable("newParentId")?),
-        "remove_folder_from_catalog" => Command::RemoveFolder(id("folderId")?),
+        "remove_folder_from_catalog" => Command::RemoveFolder(id("folderId")?, optional_password()?),
+        "trash_folder_start" => Command::TrashFolderStart(id("folderId")?),
+        "trash_folder_block" => Command::TrashFolderBlock(text("token")?),
         "remove_companion" => Command::CompanionTrash(id("companionId")?),
         "restore_companion" => Command::CompanionRestore(id("companionId")?),
+        "disk_sync_preview" => Command::DiskPreview(disksync::parse_selection(v)?),
+        "disk_sync_apply_start" => Command::DiskApplyStart(
+            text("token")?,
+            match v.get("confirmRemoval") {
+                None => false,
+                Some(Value::Bool(b)) => *b,
+                Some(_) => return Err(err(400, "invalid_arguments")),
+            },
+            optional_password()?,
+        ),
+        "disk_sync_apply_block" => Command::DiskApplyBlock(
+            text("token")?,
+            v.get("seq").and_then(Value::as_u64).ok_or_else(|| err(400, "invalid_arguments"))?,
+        ),
+        "preview_date_rename" => Command::DatePreview(ids()?, disksync::parse_date_source(v)?),
+        "apply_date_rename" => Command::DateApply(disksync::parse_date_items(v)?),
         _ => unreachable!(),
     })
 }
@@ -269,7 +341,10 @@ pub(super) fn valid_session(app: &App, current: &Session) -> bool {
 pub(super) fn operation_cancellation(app: &App, current: &Session) -> crate::fileops_cancel::Cancellation {
     let validity = current.validity.clone();
     let clock = app.clock.clone();
-    deadline_cancellation(Duration::from_secs(20), move || validity.valid(clock.now()))
+    let barrier = app.geometry.barrier.clone();
+    deadline_cancellation(Duration::from_secs(20), move || {
+        barrier.snapshot().state == crate::barrier::State::Open && validity.valid(clock.now())
+    })
 }
 fn deadline_cancellation(
     limit: Duration,
@@ -330,7 +405,16 @@ pub(super) async fn invoke(
         Command::Move(ids, _) | Command::Trash(ids) => progress.set_file_ids(ids),
         _ => (),
     }
-    if let Command::Permanent(_, pw) | Command::Start(_, _, _, pw) = &parsed {
+    // `Permanent` and `Start` always need the password. `RemoveFolder` and `DiskApplyStart`
+    // only past their threshold (decided in `execute`), but a password that is sent is always
+    // checked, so a wrong one never passes for "no password".
+    let password = match &parsed {
+        Command::Permanent(_, pw) | Command::Start(_, _, _, pw) => Some(pw),
+        Command::RemoveFolder(_, pw) | Command::DiskApplyStart(_, _, pw) => pw.as_ref(),
+        _ => None,
+    };
+    let mut verified = false;
+    if let Some(pw) = password {
         let hash = app
             .data
             .lock()
@@ -341,13 +425,15 @@ pub(super) async fn invoke(
             .password_hash
             .clone();
         match verify_client(app.clone(), &peer, hash, pw.clone(), true).await {
-            Ok(true) => (),
+            Ok(true) => verified = true,
             Ok(false) => return failure(403, "password_invalid"),
             Err(r) => return *r,
         }
     }
+    let catalog_guard = match app.geometry.barrier.writer() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     let worker_rt = rt.clone();
     tokio::task::spawn_blocking(move || {
+        let _catalog_guard = catalog_guard;
         let rt = worker_rt;
         let _admission = admission;
         // Acquire import gate BEFORE runtime/fileops mutex. Never app.changes.
@@ -391,6 +477,7 @@ pub(super) async fn invoke(
             &mut state,
             allowed,
             cancellation,
+            verified,
         );
         if state.ops.journal.is_blocked() {
             *rt.op_ids.lock().unwrap() = state.ops.journal.pending_manual_op_ids();
@@ -414,6 +501,7 @@ pub(super) async fn invoke(
         failure(503, "restart_required")
     })
 }
+#[allow(clippy::too_many_arguments)]
 fn execute(
     app: &App,
     current: &Session,
@@ -422,6 +510,8 @@ fn execute(
     state: &mut RuntimeState,
     mut allowed: impl FnMut() -> bool,
     cancellation: crate::fileops_cancel::Cancellation,
+    // The request carried a password that was just checked and is correct.
+    verified: bool,
 ) -> Result<Value, Box<Response>> {
     let now = app.clock.now();
     let ops = &mut state.ops;
@@ -472,9 +562,14 @@ fn execute(
             .map_err(core_error),
         Command::RenameFolder(id, name) => unit(ops.rename_folder(id, &name)),
         Command::MoveFolder(id, parent) => unit(ops.move_folder(id, parent)),
-        Command::RemoveFolder(id) => {
+        Command::RemoveFolder(id, _) => {
             ops.folder_removal_summary(id).map_err(core_error)?;
             let ids = folder_ids(app, id)?;
+            // Before any budget, backup or change: a folder that holds catalog entries is only
+            // removed with the password (an empty folder, or one of empty subfolders, is not).
+            if ids.len() >= FOLDER_REMOVE_PASSWORD_FROM && !verified {
+                return Err(err(403, "password_required"));
+            }
             progress.set_file_ids(&ids);
             app.fileops_safety.lock().map_err(|_| err(503, "restart_required"))?
                 .reserve_folder(ids.len(), now).map_err(budget_error)?;
@@ -490,6 +585,46 @@ fn execute(
                 return Err(err(409, "not_started"));
             }
             result.map(|v| json!(v)).map_err(core_error)
+        }
+        Command::TrashFolderStart(id) => {
+            let snapshot = ops.folder_trash_snapshot(id).map_err(core_error)?;
+            let count = snapshot.remaining();
+            progress.set_file_ids(snapshot.ids());
+            reserve_folder_trash(app, count, now)?;
+            backup(app, count.max(1), true)?;
+            if !allowed() {
+                return Err(err(409, "not_started"));
+            }
+            state.folder_snapshots.retain(|_, s| now.saturating_sub(s.created) < 3600);
+            if state.folder_snapshots.len() >= 100 {
+                return Err(err(503, "snapshot_capacity"));
+            }
+            let token = random_token()?;
+            state.folder_snapshots.insert(
+                token.clone(),
+                FolderSnapshot { session: current.token.clone(), created: now, snapshot },
+            );
+            Ok(json!({"token":token,"remaining":count}))
+        }
+        Command::TrashFolderBlock(token) => {
+            let snap = state
+                .folder_snapshots
+                .get_mut(&token)
+                .filter(|s| s.session == current.token && now.saturating_sub(s.created) < 3600)
+                .ok_or_else(|| err(404, "snapshot_not_found"))?;
+            progress.set_file_ids(snap.snapshot.next_block_ids());
+            app.fileops_safety
+                .lock()
+                .map_err(|_| err(503, "restart_required"))?
+                .reserve_folder_trash_block(now)
+                .map_err(retry)?;
+            let count = eligible(ops, snap.snapshot.next_block_ids(), None, false)?;
+            backup(app, count, false)?;
+            let block = ops.folder_trash_block(&mut snap.snapshot, allowed).map_err(core_error)?;
+            if block.remaining == 0 {
+                state.folder_snapshots.remove(&token);
+            }
+            Ok(json!(block))
         }
         Command::CompanionTrash(id) => {
             // Refusals (unknown, already removed, model in the trash) spend no budget or backup.
@@ -512,6 +647,15 @@ fn execute(
             progress.set_companion_ids(&[id]);
             unit(ops.restore_companion(id))
         }
+        Command::DiskPreview(selection) => disksync::preview(app, current, state, selection, now),
+        Command::DiskApplyStart(token, confirm, _) => {
+            disksync::apply_start(app, current, progress, state, &token, confirm, verified, now, &mut allowed)
+        }
+        Command::DiskApplyBlock(token, seq) => {
+            disksync::apply_block(app, current, progress, state, &token, seq, now, &mut allowed)
+        }
+        Command::DatePreview(ids, source) => disksync::date_preview(state, &ids, source),
+        Command::DateApply(items) => disksync::date_apply(app, progress, state, items, &mut allowed),
         Command::Start(count, companions, cutoff, _) => {
             let snapshot = ops
                 .empty_trash_snapshot_with(count, companions, cutoff.as_deref())
@@ -590,6 +734,15 @@ fn execute(
         }
     }
 }
+/// Charges the whole folder to the folder budget once, so the blocks that follow are not
+/// refused by the 200-per-window limit of single deletions.
+fn reserve_folder_trash(app: &App, count: usize, now: u64) -> Result<(), Box<Response>> {
+    app.fileops_safety
+        .lock()
+        .map_err(|_| err(503, "restart_required"))?
+        .reserve_folder(count, now)
+        .map_err(budget_error)
+}
 pub(super) fn folder_ids(app: &App, id: i64) -> Result<Vec<i64>, Box<Response>> {
     let conn = app
         .writer
@@ -639,7 +792,13 @@ fn eligible(
 }
 
 fn completed_items(command: &str, v: &Value) -> u64 {
-    if command == "empty_trash_start" {
+    if command == "empty_trash_start" || command == "trash_folder_start" || command == "disk_sync_preview" || command == "disk_sync_apply_start" {
+        0
+    } else if command == "apply_date_rename" {
+        v.as_array()
+            .map(|r| r.iter().filter(|e| e.get("status").and_then(Value::as_str) == Some("renamed")).count() as u64)
+            .unwrap_or(0)
+    } else if command == "preview_date_rename" {
         0
     } else if let Some(results) = v
         .as_array()
@@ -813,10 +972,12 @@ pub(super) async fn add_companion(
     };
     progress.set_file_ids(&[file_id]);
     let (sender, chunks) = tokio::sync::mpsc::channel(4);
+    let catalog_guard = match app.geometry.barrier.writer() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     let pumping = tokio::spawn(pump(body, sender, idle));
     let max = app.config.companion_max_bytes;
     let worker_rt = rt.clone();
     let result = tokio::task::spawn_blocking(move || {
+        let _catalog_guard = catalog_guard;
         let rt = worker_rt;
         let (_admission, _slot) = (admission, slot);
         let mut reader = BodyReader { chunks, current: Default::default() };

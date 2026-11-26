@@ -41,6 +41,14 @@ it('says nothing about the open part when nothing is open, and reports failures'
   expect(text).toContain('Beim Start aufgenommen: 2 neue Dateien. 3 Dateien konnten nicht aufgenommen werden.');
   expect(text).not.toContain('Weiter offen');
 });
+it('lists the rest of the new files as still open (205 found, 200 taken over)', () => {
+  show(result({ newFiles: 205, applied: { added: 200, renamed: 0, failed: 0 } }));
+  expect(screen.getByRole('status')).toHaveTextContent('Beim Start aufgenommen: 200 neue Dateien. Weiter offen: 5 neue Dateien.');
+});
+it('keeps the notice when the run stopped before the first import', () => {
+  show(result({ newFiles: 7, applied: { added: 0, renamed: 0, failed: 0 } }));
+  expect(screen.getByRole('status')).toHaveTextContent('Weiter offen: 7 neue Dateien.');
+});
 it('shows nothing when everything was taken over without anything left', () => {
   const { container } = show(result({ applied: { added: 0, renamed: 0, failed: 0 } }));
   expect(container).toBeEmptyDOMElement();

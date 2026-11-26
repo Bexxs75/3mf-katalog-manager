@@ -28,6 +28,7 @@ pub const MAX_CONNECTIONS_PER_PEER: usize = 32;
 #[derive(Clone)]
 pub struct PeerLimiter {
     max: Option<usize>,
+    exempt: crate::config::TrustedProxies,
     open: Arc<Mutex<HashMap<IpAddr, usize>>>,
 }
 pub struct PeerGuard {
@@ -51,7 +52,13 @@ impl PeerLimiter {
     /// `max = None` disables the limit (behind a trusted proxy every client
     /// shares the proxy's address).
     pub fn new(max: Option<usize>) -> Self {
-        Self { max, open: Arc::default() }
+        Self { max, exempt: Default::default(), open: Arc::default() }
+    }
+    /// Trusted reverse proxies share one address for all their clients, so they
+    /// are not limited per peer (only the global limit applies to them).
+    pub fn with_exempt(mut self, exempt: crate::config::TrustedProxies) -> Self {
+        self.exempt = exempt;
+        self
     }
     fn key(address: IpAddr) -> IpAddr {
         match address {
@@ -63,7 +70,7 @@ impl PeerLimiter {
         }
     }
     fn acquire(&self, address: IpAddr) -> Option<PeerGuard> {
-        let Some(max) = self.max else {
+        let Some(max) = self.max.filter(|_| !self.exempt.contains(address)) else {
             return Some(PeerGuard { key: None, open: self.open.clone() });
         };
         let key = Self::key(address);
@@ -77,14 +84,23 @@ impl PeerLimiter {
     }
 }
 
+#[derive(Clone)]
+pub(crate) struct Restart(watch::Sender<bool>);
+impl Restart {
+    pub(crate) fn request(&self) { self.0.send_replace(true); }
+}
+
 pub async fn serve(
     listener: tokio::net::TcpListener,
     app: Router,
     per_peer_limit: Option<usize>,
+    exempt_peers: crate::config::TrustedProxies,
     shutdown: impl Future<Output = ()>,
 ) -> std::io::Result<()> {
+    let (restart, mut restarting) = watch::channel(false);
+    let app = app.layer(axum::Extension(Restart(restart)));
     let slots = Arc::new(Semaphore::new(256));
-    let peers = PeerLimiter::new(per_peer_limit);
+    let peers = PeerLimiter::new(per_peer_limit).with_exempt(exempt_peers);
     let (stop, stopped) = watch::channel(false);
     let mut tasks = JoinSet::new();
     tokio::pin!(shutdown);
@@ -92,6 +108,7 @@ pub async fn serve(
         tokio::select! {
             biased;
             _ = &mut shutdown => break Ok(()),
+            _ = restarting.changed() => break Ok(()),
             Some(_) = tasks.join_next(), if !tasks.is_empty() => {},
             accepted = listener.accept() => match accepted {
                 Ok((stream, address)) => {
@@ -282,6 +299,30 @@ mod tests {
         Router::new().route("/", axum::routing::get(|| async { "ok" }))
     }
 
+
+    #[tokio::test]
+    async fn restore_restart_drains_the_response_before_connection_finishes() {
+        let (restart, mut restarting) = watch::channel(false);
+        let app = Router::new().route("/", axum::routing::post(
+            |axum::Extension(restart): axum::Extension<Restart>| async move {
+                restart.request();
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                "restore-response-complete"
+            }
+        )).layer(axum::Extension(Restart(restart)));
+        let (mut client, server) = tokio::io::duplex(1024);
+        let (stop, stopped) = watch::channel(false);
+        let task = tokio::spawn(connection(server, app, stopped));
+        client.write_all(b"POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n").await.unwrap();
+        tokio::time::timeout(Duration::from_secs(2), restarting.changed()).await.unwrap().unwrap();
+        stop.send(true).unwrap();
+        let mut response = String::new();
+        tokio::time::timeout(Duration::from_secs(2), client.read_to_string(&mut response)).await.unwrap().unwrap();
+        task.await.unwrap();
+        assert!(response.contains("200 OK"));
+        assert!(response.contains("restore-response-complete"));
+    }
+
     #[tokio::test(start_paused = true)]
     async fn progressing_response_is_not_cut_off_after_sixty_seconds() {
         let app = Router::new().route(
@@ -403,6 +444,22 @@ mod tests {
         while tasks.join_next().await.is_some() {}
         let (_c, server) = tokio::io::duplex(4096);
         assert!(admit(&mut tasks, &slots, &peers, same_64, server, app(), rx.clone()));
+        // A trusted proxy address is exempt from the per-peer limit, any other peer is not.
+        let exempt = PeerLimiter::new(Some(MAX_CONNECTIONS_PER_PEER)).with_exempt(crate::config::TrustedProxies::parse("10.9.0.0/16").unwrap());
+        let proxy: IpAddr = "10.9.0.5".parse().unwrap();
+        let stranger: IpAddr = "10.8.0.5".parse().unwrap();
+        for _ in 0..(MAX_CONNECTIONS_PER_PEER + 1) {
+            let (c, server) = tokio::io::duplex(4096);
+            assert!(admit(&mut tasks, &slots, &exempt, proxy, server, app(), rx.clone()));
+            std::mem::forget(c);
+        }
+        for _ in 0..MAX_CONNECTIONS_PER_PEER {
+            let (c, server) = tokio::io::duplex(4096);
+            assert!(admit(&mut tasks, &slots, &exempt, stranger, server, app(), rx.clone()));
+            std::mem::forget(c);
+        }
+        let (_c, server) = tokio::io::duplex(4096);
+        assert!(!admit(&mut tasks, &slots, &exempt, stranger, server, app(), rx.clone()));
         // Without a per-peer limit (trusted proxy) only the global limit remains.
         let unlimited = PeerLimiter::new(None);
         for _ in 0..(MAX_CONNECTIONS_PER_PEER + 1) {

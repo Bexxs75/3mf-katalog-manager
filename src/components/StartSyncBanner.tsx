@@ -12,11 +12,12 @@ export function StartSyncBanner({ notice, onView, onClose }: Props) {
   if (!notice) return null;
   const join = (parts: string[]) => parts.join(', ');
   const sentence = (key: 'startSyncFound' | 'startSyncAdded' | 'startSyncStillOpen', parts: string[]) => parts.length ? t(key).replace('{items}', join(parts)) : '';
+  const added = notice.added;
   const open = [
+    ...(added && notice.newFiles > 0 ? [count(t('diskSyncNewFiles'), notice.newFiles)] : []),
     ...(notice.missing > 0 ? [count(t('diskSyncMissing'), notice.missing)] : []),
     ...(notice.duplicates > 0 ? [count(t('startSyncSameContent'), notice.duplicates)] : []),
   ];
-  const added = notice.added;
   const text = notice.unreachable > 0 ? count(t('startSyncUnreachable'), notice.unreachable) : (added ? [
     sentence('startSyncAdded', [
       ...(added.files > 0 ? [count(t('diskSyncNewFiles'), added.files)] : []),

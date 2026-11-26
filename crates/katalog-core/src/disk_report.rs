@@ -9,6 +9,7 @@
 //! followed (a link on the way makes a row "unknown", not "missing"), and nothing in the
 //! result is an absolute path: every entry names its root by index and its path relative
 //! to that root.
+use crate::catalog_issues::{classify, UnclearReason};
 use crate::import::files::{is_ignored_import_path, is_model_extension};
 use rusqlite::Connection;
 use serde::Serialize;
@@ -137,6 +138,24 @@ pub struct DanglingCompanion {
     pub relative_path: String,
     pub reason: DanglingReason,
 }
+/// An entry the check could not judge (drive gone, link or file on the way, read error).
+/// Display only: it is never reported as missing and never offered for removal.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UnclearEntry {
+    pub root: usize,
+    pub relative_path: String,
+    pub reason: UnclearReason,
+}
+/// A folder that is gone as a whole: every component before it exists as a real directory and
+/// it does not. `models` are the ids listed in `missing_models` below it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MissingFolder {
+    pub root: usize,
+    pub relative_path: String,
+    pub models: Vec<String>,
+}
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum TruncatedBy {
@@ -151,6 +170,11 @@ pub struct DiskReport {
     pub missing_models: Vec<MissingModel>,
     pub new_files: Vec<NewFile>,
     pub dangling_companions: Vec<DanglingCompanion>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unclear: Vec<UnclearEntry>,
+    /// Always serialized (also empty): the web client treats a present field as "the server verified
+    /// the folders" and must not fall back to its parent heuristic. Only the web server uses this struct.
+    pub missing_folders: Vec<MissingFolder>,
     /// Active models and companions whose stored path is below no configured root; they
     /// are counted, never listed (no path leaves the server).
     pub models_outside_roots: usize,
@@ -161,16 +185,16 @@ pub struct DiskReport {
     pub truncated_by: Vec<TruncatedBy>,
 }
 
-struct Root {
-    stored: PathBuf,
-    canonical: PathBuf,
-    status: RootStatus,
+pub(crate) struct Root {
+    pub(crate) stored: PathBuf,
+    pub(crate) canonical: PathBuf,
+    pub(crate) status: RootStatus,
     /// Nested in an earlier root: that root's walk already covers it.
-    covered: bool,
+    pub(crate) covered: bool,
 }
 impl Root {
     /// Path relative to this root when `path` lies below it, spelled either way.
-    fn relative(&self, path: &Path) -> Option<PathBuf> {
+    pub(crate) fn relative(&self, path: &Path) -> Option<PathBuf> {
         let relative = path.strip_prefix(&self.stored).or_else(|_| path.strip_prefix(&self.canonical)).ok()?;
         if relative.as_os_str().is_empty() || relative.components().any(|c| !matches!(c, Component::Normal(_))) {
             return None;
@@ -186,12 +210,12 @@ fn key(path: &Path) -> PathBuf {
         path.to_path_buf()
     }
 }
-fn shown(relative: &Path) -> String {
+pub(crate) fn shown(relative: &Path) -> String {
     relative.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/")
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum Presence {
+pub(crate) enum Presence {
     Missing,
     File,
     /// A folder, a final link or a special file.
@@ -199,8 +223,20 @@ enum Presence {
     /// A link on the way or an I/O error: no statement possible.
     Unknown,
 }
+/// A certain answer of [`inspect`].
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Found {
+    /// Nothing at the path. `absent` is the index of the first component that does not exist;
+    /// everything before it is a real directory.
+    Missing { absent: usize },
+    File,
+    /// A folder, a final link or a special file.
+    Other,
+}
 /// Looks at `relative` below the canonical root component by component without following links.
-fn presence(root: &Path, relative: &Path) -> Presence {
+/// A link or a non-directory on the way, or an I/O error, gives no statement (`Err` with the
+/// reason): a file where a folder should be is never taken for "gone".
+pub(crate) fn inspect(root: &Path, relative: &Path) -> Result<Found, UnclearReason> {
     let mut current = root.to_path_buf();
     let count = relative.components().count();
     for (index, component) in relative.components().enumerate() {
@@ -208,15 +244,24 @@ fn presence(root: &Path, relative: &Path) -> Presence {
         match std::fs::symlink_metadata(&current) {
             Ok(meta) if index + 1 < count => {
                 if !meta.is_dir() {
-                    return if meta.file_type().is_symlink() { Presence::Unknown } else { Presence::Missing };
+                    return Err(UnclearReason::Link);
                 }
             }
-            Ok(meta) => return if meta.is_file() { Presence::File } else { Presence::Other },
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Presence::Missing,
-            Err(_) => return Presence::Unknown,
+            Ok(meta) => return Ok(if meta.is_file() { Found::File } else { Found::Other }),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Found::Missing { absent: index }),
+            Err(e) => return Err(classify(&e)),
         }
     }
-    Presence::Unknown
+    Err(UnclearReason::Read)
+}
+/// [`inspect`] without the reason.
+pub(crate) fn presence(root: &Path, relative: &Path) -> Presence {
+    match inspect(root, relative) {
+        Ok(Found::Missing { .. }) => Presence::Missing,
+        Ok(Found::File) => Presence::File,
+        Ok(Found::Other) => Presence::Other,
+        Err(_) => Presence::Unknown,
+    }
 }
 
 struct Budget {
@@ -247,7 +292,7 @@ impl Budget {
     }
 }
 
-fn open_roots(configured: &[PathBuf]) -> Vec<Root> {
+pub(crate) fn open_roots(configured: &[PathBuf]) -> Vec<Root> {
     let mut roots: Vec<Root> = configured
         .iter()
         .map(|stored| match std::fs::canonicalize(stored) {
@@ -260,9 +305,26 @@ fn open_roots(configured: &[PathBuf]) -> Vec<Root> {
     roots
 }
 
+/// The configured roots in the order the report numbers them (`root` indexes of every list in
+/// [`DiskReport`]): shallow roots first. Report and apply must index roots the same way, so both
+/// go through here.
+pub fn ordered_roots(configured: &[PathBuf]) -> Vec<PathBuf> {
+    open_roots(configured).into_iter().map(|r| r.stored).collect()
+}
+
+/// Display names of the roots, indexed like [`ordered_roots`] (what `root` means in every list):
+/// the last path component only, never the absolute path.
+pub fn root_names(ordered: &[PathBuf]) -> Vec<String> {
+    ordered.iter().map(|p| root_name(p)).collect()
+}
+
+fn root_name(stored: &Path) -> String {
+    stored.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
 /// Whether an earlier, usable root already walks each root. Run after the status checks:
 /// a root that turned out empty or unreachable covers nothing.
-fn mark_covered(roots: &mut [Root]) {
+pub(crate) fn mark_covered(roots: &mut [Root]) {
     for index in 0..roots.len() {
         let covered = roots[..index].iter().any(|r| r.status == RootStatus::Ok && roots[index].canonical.starts_with(&r.canonical));
         roots[index].covered = covered && roots[index].status == RootStatus::Ok;
@@ -270,7 +332,7 @@ fn mark_covered(roots: &mut [Root]) {
 }
 
 /// The root a stored path belongs to and its path below it.
-fn locate(roots: &[Root], path: &str) -> Option<(usize, PathBuf)> {
+pub(crate) fn locate(roots: &[Root], path: &str) -> Option<(usize, PathBuf)> {
     let path = Path::new(path);
     // A usable root wins; a row that lies only below an unreachable root still belongs to it
     // (so it is not mistaken for a row outside every root) and is skipped by the callers.
@@ -280,9 +342,61 @@ fn locate(roots: &[Root], path: &str) -> Option<(usize, PathBuf)> {
     find(true).or_else(|| find(false))
 }
 
+/// Which catalog folders are gone from disk, for the folder list. `folders` are `(id, path)`.
+/// Only `NotFound` counts as gone: a link on the way, an I/O error, a root that cannot be read
+/// or one that is empty although folders are cataloged below it (an unmounted volume) leave
+/// the folder out. The second value tells that a limit ended the check early; folders not
+/// reached are not reported.
+pub fn missing_folder_ids(folders: &[(i64, String)], configured: &[PathBuf], limits: Limits) -> (HashSet<i64>, bool) {
+    let mut budget = Budget { started: Instant::now(), limits, truncated: Vec::new() };
+    let mut roots = open_roots(configured);
+    for root in roots.iter_mut().filter(|r| r.status == RootStatus::Ok) {
+        let holds_folders = folders.iter().any(|(_, p)| root.relative(Path::new(p)).is_some());
+        match std::fs::read_dir(&root.canonical) {
+            Err(_) => root.status = RootStatus::Unreachable,
+            Ok(mut entries) => {
+                if holds_folders && entries.next().is_none() {
+                    root.status = RootStatus::Empty;
+                }
+            }
+        }
+    }
+    let mut missing = HashSet::new();
+    for (checked, (id, path)) in folders.iter().enumerate() {
+        if checked >= limits.max_entries {
+            budget.mark(TruncatedBy::Entries);
+            break;
+        }
+        if budget.out_of_time() {
+            break;
+        }
+        let Some((index, relative)) = locate(&roots, path) else { continue };
+        if roots[index].status != RootStatus::Ok {
+            continue;
+        }
+        if presence(&roots[index].canonical, &relative) == Presence::Missing {
+            missing.insert(*id);
+        }
+    }
+    (missing, !budget.truncated.is_empty())
+}
+
 /// Compares the snapshot with the disk below `configured`. Never fails: whatever cannot
 /// be judged is left out and, where a limit caused it, `truncated` says so.
 pub fn build_report(snapshot: &Snapshot, configured: &[PathBuf], limits: Limits) -> DiskReport {
+    build_report_with(snapshot, configured, ReportOptions { limits, excluded: &[] })
+}
+
+/// [`build_report`] with folders the walk must not enter (for the web: the upload folder).
+/// Files inside them are never listed as new; folders that do not exist are ignored.
+pub struct ReportOptions<'a> {
+    pub limits: Limits,
+    pub excluded: &'a [PathBuf],
+}
+
+pub fn build_report_with(snapshot: &Snapshot, configured: &[PathBuf], options: ReportOptions<'_>) -> DiskReport {
+    let ReportOptions { limits, excluded } = options;
+    let excluded: Vec<PathBuf> = excluded.iter().filter_map(|p| std::fs::canonicalize(p).ok()).collect();
     let mut budget = Budget { started: Instant::now(), limits, truncated: Vec::new() };
     let mut roots = open_roots(configured);
     let mut report = DiskReport::default();
@@ -296,7 +410,11 @@ pub fn build_report(snapshot: &Snapshot, configured: &[PathBuf], limits: Limits)
         match std::fs::read_dir(&root.canonical) {
             Err(_) => root.status = RootStatus::Unreachable,
             Ok(mut entries) => {
-                if holds_models && entries.next().is_none() {
+                let has_content = entries.any(|e| match e {
+                    Ok(e) => e.file_name().to_str().is_none_or(crate::fs_portable::names::is_root_content),
+                    Err(_) => true,
+                });
+                if holds_models && !has_content {
                     root.status = RootStatus::Empty;
                 }
             }
@@ -309,6 +427,7 @@ pub fn build_report(snapshot: &Snapshot, configured: &[PathBuf], limits: Limits)
     let mut known = HashSet::new();
     let mut companion_dirs = HashSet::new();
     let mut model_checks = Vec::new();
+    let mut not_judged = Vec::new();
     for model in &snapshot.models {
         match locate(&roots, &model.path) {
             None => {
@@ -320,6 +439,8 @@ pub fn build_report(snapshot: &Snapshot, configured: &[PathBuf], limits: Limits)
                 known.insert(key(&roots[index].canonical.join(&relative)));
                 if model.active && roots[index].status == RootStatus::Ok {
                     model_checks.push((model.id, index, relative));
+                } else if model.active {
+                    not_judged.push((index, relative));
                 }
             }
         }
@@ -335,32 +456,55 @@ pub fn build_report(snapshot: &Snapshot, configured: &[PathBuf], limits: Limits)
         }
         if roots[index].status == RootStatus::Ok {
             companion_checks.push((row, index, relative));
+        } else {
+            not_judged.push((index, relative));
         }
     }
 
     let mut checked = vec![0usize; roots.len()];
     let mut gone = vec![0usize; roots.len()];
     let mut all_checked = true;
+    // Rows below a root that is gone, empty or unreadable: shown as unclear, nothing more.
+    for (index, relative) in not_judged {
+        if budget.room(report.unclear.len()) {
+            report.unclear.push(UnclearEntry { root: index, relative_path: shown(&relative), reason: UnclearReason::Unreachable });
+        }
+    }
+    let mut folders: std::collections::BTreeMap<(usize, String), Vec<String>> = std::collections::BTreeMap::new();
     for (id, index, relative) in model_checks {
         if budget.out_of_time() {
             all_checked = false;
             break;
         }
         checked[index] += 1;
-        if presence(&roots[index].canonical, &relative) == Presence::Missing {
-            gone[index] += 1;
-            if budget.room(report.missing_models.len()) {
-                report.missing_models.push(MissingModel { id: id.to_string(), root: index, relative_path: shown(&relative) });
+        match inspect(&roots[index].canonical, &relative) {
+            Ok(Found::Missing { absent }) => {
+                gone[index] += 1;
+                if budget.room(report.missing_models.len()) {
+                    report.missing_models.push(MissingModel { id: id.to_string(), root: index, relative_path: shown(&relative) });
+                    if absent + 1 < relative.components().count() {
+                        let folder: PathBuf = relative.components().take(absent + 1).collect();
+                        folders.entry((index, shown(&folder))).or_default().push(id.to_string());
+                    }
+                }
+            }
+            Ok(_) => {}
+            Err(reason) => {
+                if budget.room(report.unclear.len()) {
+                    report.unclear.push(UnclearEntry { root: index, relative_path: shown(&relative), reason });
+                }
             }
         }
     }
+    report.missing_folders =
+        folders.into_iter().map(|((root, relative_path), models)| MissingFolder { root, relative_path, models }).collect();
     let mostly_missing: Vec<bool> =
         (0..roots.len()).map(|i| all_checked && checked[i] >= MOSTLY_MISSING_MIN_MODELS && gone[i] * 2 > checked[i]).collect();
     report.roots = roots
         .iter()
         .enumerate()
         .map(|(i, r)| RootInfo {
-            name: r.stored.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            name: root_name(&r.stored),
             status: r.status,
             mostly_missing: mostly_missing[i],
         })
@@ -370,10 +514,16 @@ pub fn build_report(snapshot: &Snapshot, configured: &[PathBuf], limits: Limits)
         if budget.out_of_time() {
             break;
         }
-        let reason = match presence(&roots[index].canonical, &relative) {
-            Presence::Missing => DanglingReason::Missing,
-            Presence::Other => DanglingReason::NotFile,
-            Presence::File | Presence::Unknown => continue,
+        let reason = match inspect(&roots[index].canonical, &relative) {
+            Ok(Found::Missing { .. }) => DanglingReason::Missing,
+            Ok(Found::Other) => DanglingReason::NotFile,
+            Ok(Found::File) => continue,
+            Err(why) => {
+                if budget.room(report.unclear.len()) {
+                    report.unclear.push(UnclearEntry { root: index, relative_path: shown(&relative), reason: why });
+                }
+                continue;
+            }
         };
         if budget.room(report.dangling_companions.len()) {
             report.dangling_companions.push(DanglingCompanion {
@@ -393,7 +543,7 @@ pub fn build_report(snapshot: &Snapshot, configured: &[PathBuf], limits: Limits)
         if root.status != RootStatus::Ok || root.covered {
             continue;
         }
-        if !walk(index, root, &known, &companion_dirs, &mut budget, &mut report) {
+        if !walk(index, root, &known, &companion_dirs, &excluded, &mut budget, &mut report) {
             break;
         }
     }
@@ -401,6 +551,7 @@ pub fn build_report(snapshot: &Snapshot, configured: &[PathBuf], limits: Limits)
     report.missing_models.sort_by(|a, b| (a.root, &a.relative_path).cmp(&(b.root, &b.relative_path)));
     report.new_files.sort_by(|a, b| (a.root, &a.relative_path).cmp(&(b.root, &b.relative_path)));
     report.dangling_companions.sort_by(|a, b| (a.root, &a.relative_path).cmp(&(b.root, &b.relative_path)));
+    report.unclear.sort_by(|a, b| (a.root, &a.relative_path).cmp(&(b.root, &b.relative_path)));
     report.truncated = !budget.truncated.is_empty();
     report.truncated_by = budget.truncated;
     report
@@ -413,9 +564,13 @@ fn walk(
     root: &Root,
     known: &HashSet<PathBuf>,
     companion_dirs: &HashSet<PathBuf>,
+    excluded: &[PathBuf],
     budget: &mut Budget,
     report: &mut DiskReport,
 ) -> bool {
+    if excluded.iter().any(|e| root.canonical.starts_with(e)) {
+        return true;
+    }
     let mut pending = vec![root.canonical.clone()];
     while let Some(dir) = pending.pop() {
         if let Some(hook) = budget.limits.walk_hook {
@@ -445,7 +600,10 @@ fn walk(
                 continue;
             }
             if kind.is_dir() {
-                if crate::companions::is_extras_dir_name(&path) || companion_dirs.contains(&key(&path)) {
+                if crate::companions::is_extras_dir_name(&path)
+                    || companion_dirs.contains(&key(&path))
+                    || excluded.iter().any(|e| path.starts_with(e))
+                {
                     continue;
                 }
                 subdirs.push(path);

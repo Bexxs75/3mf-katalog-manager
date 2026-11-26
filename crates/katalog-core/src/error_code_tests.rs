@@ -274,9 +274,14 @@ fn migrated_sources() -> Vec<(&'static str, String)> {
         whole("catalog_removal.rs", include_str!("../../../src-tauri/src/commands/catalog_removal.rs")),
         whole("source_folders.rs", include_str!("../../../src-tauri/src/commands/source_folders.rs")),
         functions("files.rs", include_str!("../../../src-tauri/src/commands/files.rs"), &[
-            "validate_file_name", "move_file_core", "move_files_to_folder_with", "rename_file_with_conn",
+            "validate_file_name", "move_files_to_folder_with", "rename_file_with_conn",
         ]),
-        functions("companions.rs", include_str!("../../../src-tauri/src/commands/companions.rs"), &["carry_with", "extras_dir_problem"]),
+        // The move flow moved from the desktop into the core with issue #20 (P5).
+        whole("file_move.rs", include_str!("file_move.rs")),
+        // The folder rename and move moved from the desktop into the core with issue #20 (P6).
+        whole("folder_move.rs", include_str!("folder_move.rs")),
+        // The carry of the companions moved from the desktop into the core with issue #20 (P3).
+        functions("companion_actions.rs", include_str!("companion_actions.rs"), &["carry", "extras_dir_problem"]),
         whole("web.rs", include_str!("../../katalog-server/src/web.rs")),
         whole("write.rs", include_str!("../../katalog-server/src/write.rs")),
         whole("download.rs", include_str!("../../katalog-server/src/download.rs")),
@@ -309,8 +314,14 @@ fn migrated_sources() -> Vec<(&'static str, String)> {
         whole("security.rs", include_str!("../../../src-tauri/src/commands/security.rs")),
         whole("import_jobs.rs", include_str!("../../../src-tauri/src/commands/import_jobs.rs")),
         functions("backup.rs", include_str!("../../../src-tauri/src/commands/backup.rs"), &[
-            "validate_file_name", "reject_oversized_zip_entry", "read_catalog_archive", "validate_catalog_db_bytes", "validate_backup_for_import",
+            "read_catalog_archive", "validate_catalog_db_bytes", "validate_backup_for_import",
         ]),
+        whole("catalog_restore/mod.rs", include_str!("catalog_restore/mod.rs")),
+        whole("catalog_restore/imported_paths.rs", include_str!("catalog_restore/imported_paths.rs")),
+        whole("folder_trash.rs (core)", include_str!("folder_trash.rs")),
+        whole("model_trash.rs (core)", include_str!("model_trash.rs")),
+        whole("date_rename.rs (core)", include_str!("date_rename.rs")),
+        whole("import/sources.rs", include_str!("import/sources.rs")),
     ]
 }
 

@@ -40,9 +40,9 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
   // The trash notice can be the only finding; then the all-zero counters would only add noise.
   const hasFindings = !!scan && (selectable || hasMissing || scan.newFolders.length > 0 || scan.skippedPaths.length > 0);
   const ref = useModalDialog({ open: true, onClose, busy });
-  const rows = (e: DiskEntry) => <>
+  const rows = (e: DiskEntry, label = t('diskSyncFileLabel')) => <>
     <div className="flex gap-2">
-      <span className="w-[100px] shrink-0 text-[var(--ink-3)]">{t('diskSyncFileLabel')}</span>
+      <span className="w-[100px] shrink-0 text-[var(--ink-3)]">{label}</span>
       <span className="min-w-0 break-all font-code">{displayName(e.relativePath)}</span>
     </div>
     <div className="my-1.5 border-t border-[var(--line)]" />
@@ -51,8 +51,8 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
       <span className="min-w-0 break-all font-code">{displayName(e.root)}</span>
     </div>
   </>;
-  const group = (entries: DiskEntry[]) => <ul className="space-y-1">{entries.map(e => (
-    <li key={e.path} title={displayName(e.path)} className="rounded bg-[var(--panel-2)] p-2 text-small">{rows(e)}</li>
+  const group = (entries: DiskEntry[], label?: string) => <ul className="space-y-1">{entries.map(e => (
+    <li key={e.path} title={displayName(e.path)} className="rounded bg-[var(--panel-2)] p-2 text-small">{rows(e, label)}</li>
   ))}</ul>;
   // Folders that are gone come first: they explain why many files below are missing.
   const missingFolderRows = (entries: DiskFolderEntry[]) => <ul className="space-y-1 mb-1">{entries.map(e => (
@@ -121,7 +121,7 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
           {scan.trashBlockedCount > 0 && <p role="status" className={hintBox}>{count(t('diskSyncTrashBlocked'), scan.trashBlockedCount)}</p>}
           {scan.renamedFiles.length > 0 && <section><h3 className="ui-label mb-2 flex flex-wrap gap-2 items-center">{t('diskSyncRenamedHeading')}<span className={tag}>{t('diskSyncPreselected')}</span></h3>{renamed(scan.renamedFiles)}<p className={hintBox}>{t('diskSyncRenamedHint')}</p></section>}
           {(scan.newFiles.length > 0 || scan.newFolders.length > 0) && <section><h3 className="ui-label mb-2">{t('diskSyncNewHeading')}</h3>
-            {scan.newFolders.length > 0 && <div className="mb-1">{group(scan.newFolders)}</div>}
+            {scan.newFolders.length > 0 && <div className="mb-1">{group(scan.newFolders, t('diskSyncFolderLabel'))}</div>}
             {scan.newFiles.length > 0 && sectionButtons(scan.newFiles, t('diskSyncNewHeading'))}
             {pickable(scan.newFiles)}</section>}
           {scan.duplicateFiles.length > 0 && <section><h3 className="ui-label mb-2 flex flex-wrap gap-2 items-center">{t('diskSyncDuplicateHeading')}<span className={tag}>{t('diskSyncNotPreselected')}</span></h3>

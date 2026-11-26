@@ -1,5 +1,6 @@
 use super::*;
 use super::paths::sanitize_component;
+use super::formats::{TAR_MAX_EXT_CHAIN, TAR_MAX_EXT_HEADER, TAR_MAX_PATH_BYTES};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -971,6 +972,17 @@ fn rss_child_extract_7z() {
     println!("RSS_DELTA_KB={}", vm_hwm_kb().saturating_sub(before));
 }
 
+/// Removes the test directory (about 257 MB unpacked) even when an assertion panics.
+#[cfg(target_os = "linux")]
+struct RemoveOnDrop(PathBuf);
+
+#[cfg(target_os = "linux")]
+impl Drop for RemoveOnDrop {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
 /// 256 MiB of zeros in a few KiB of 7z, compressed as independent LZMA2 packets:
 /// the shape for which the library starts one decoding worker per CPU, each
 /// holding its packet fully decoded in memory.
@@ -978,7 +990,8 @@ fn rss_child_extract_7z() {
 #[test]
 fn sevenz_extraction_does_not_multiply_memory_with_worker_threads() {
     use std::io::Read;
-    let dir = unique_dir("rss");
+    let dir = RemoveOnDrop(unique_dir("rss"));
+    let dir = dir.0.as_path();
     let archive = dir.join("nullen.7z");
     let mut writer = sevenz_rust2::ArchiveWriter::create(&archive).unwrap();
     writer.set_content_methods(vec![sevenz_rust2::encoder_options::Lzma2Options::from_level_mt(6, 4, 64 * 1024 * 1024).into()]);
@@ -1009,4 +1022,364 @@ fn sevenz_extraction_does_not_multiply_memory_with_worker_threads() {
     println!("7z extraction peak growth: {} MiB", delta / 1024);
     assert_eq!(fs::metadata(dest.join("nullen.bin")).unwrap().len(), 256 * 1024 * 1024);
     assert!(delta < 64 * 1024, "peak resident memory grew by {} MiB", delta / 1024);
+}
+
+// ---------- tar: oversized extension headers and long paths (#76) ----------
+
+/// A header block that claims `claimed` bytes of data of the given type, followed
+/// by only a few real bytes - nothing is allocated by the test itself.
+fn tar_ext_header_only(kind: tar::EntryType, claimed: u64) -> Vec<u8> {
+    let mut header = tar::Header::new_gnu();
+    header.set_path("././@LongLink").unwrap();
+    header.set_entry_type(kind);
+    header.set_size(claimed);
+    header.set_mode(0o644);
+    header.set_cksum();
+    let mut raw = header.as_bytes().to_vec();
+    raw.extend_from_slice(&[b'a'; 64]);
+    raw
+}
+
+#[test]
+fn tar_oversized_extension_headers_are_rejected_without_buffering() {
+    let dir = unique_dir("tarbighdr");
+    for kind in [
+        tar::EntryType::GNULongName,
+        tar::EntryType::GNULongLink,
+        tar::EntryType::XHeader,
+        tar::EntryType::XGlobalHeader,
+    ] {
+        let path = dir.join("big.tar");
+        fs::write(&path, tar_ext_header_only(kind, 256 * 1024 * 1024)).unwrap();
+        assert!(matches!(list_entries(&path, ArchiveFormat::Tar), Err(ArchiveError::MemoryLimit)), "{kind:?}");
+        assert_eq!(inspect(&path, |_| true).status, InspectStatus::MemoryLimit, "{kind:?}");
+        let dest = dir.join("out");
+        let result = extract_archive(&path, ArchiveFormat::Tar, &dest, false, MAX_UNPACKED_BYTES, &|_| true);
+        assert!(matches!(result, Err(ArchiveError::MemoryLimit)), "{kind:?}");
+    }
+    // Same inside a compressed stream.
+    let raw = tar_ext_header_only(tar::EntryType::GNULongName, 256 * 1024 * 1024);
+    let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    enc.write_all(&raw).unwrap();
+    let gz = dir.join("big.tar.gz");
+    fs::write(&gz, enc.finish().unwrap()).unwrap();
+    assert_eq!(inspect(&gz, |_| true).status, InspectStatus::MemoryLimit);
+    // Just above the bound is rejected, at the bound it is read (and then ends early).
+    let path = dir.join("edge.tar");
+    fs::write(&path, tar_ext_header_only(tar::EntryType::GNULongName, TAR_MAX_EXT_HEADER + 1)).unwrap();
+    assert!(matches!(list_entries(&path, ArchiveFormat::Tar), Err(ArchiveError::MemoryLimit)));
+    fs::write(&path, tar_ext_header_only(tar::EntryType::GNULongName, TAR_MAX_EXT_HEADER)).unwrap();
+    assert!(matches!(list_entries(&path, ArchiveFormat::Tar), Err(ArchiveError::Unreadable(_))));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn tar_long_but_normal_paths_still_work() {
+    let dir = unique_dir("tarlongok");
+    let long300 = format!("Ordner/{}/modell.stl", "x".repeat(300));
+    let long4000 = format!("{}/m.stl", "d".repeat(3990));
+    for name in [&long300, &long4000] {
+        let path = dir.join("long.tar");
+        fs::write(&path, tar_bytes(&[(name.as_str(), b"solid x")])).unwrap();
+        let entries = list_entries(&path, ArchiveFormat::Tar).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(&entries[0].name, name);
+    }
+    // PAX extended header of normal size (as written by bsdtar / GNU tar --format=pax).
+    let mut builder = tar::Builder::new(Vec::new());
+    builder.append_pax_extensions([("path", long300.as_bytes()), ("comment", b"hello".as_slice())]).unwrap();
+    let mut header = tar::Header::new_ustar();
+    header.set_path("kurz.stl").unwrap();
+    header.set_size(7);
+    header.set_mode(0o644);
+    header.set_cksum();
+    builder.append(&header, &b"solid x"[..]).unwrap();
+    let path = dir.join("pax.tar");
+    fs::write(&path, builder.into_inner().unwrap()).unwrap();
+    let entries = list_entries(&path, ArchiveFormat::Tar).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].name, long300);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn tar_path_over_4096_bytes_is_rejected() {
+    let dir = unique_dir("tarpath4097");
+    let ok = "p".repeat(TAR_MAX_PATH_BYTES);
+    let too_long = "p".repeat(TAR_MAX_PATH_BYTES + 1);
+    let path = dir.join("p.tar");
+    fs::write(&path, tar_bytes(&[(ok.as_str(), b"x")])).unwrap();
+    assert!(list_entries(&path, ArchiveFormat::Tar).is_ok());
+    fs::write(&path, tar_bytes(&[(too_long.as_str(), b"x")])).unwrap();
+    assert!(matches!(list_entries(&path, ArchiveFormat::Tar), Err(ArchiveError::MemoryLimit)));
+    assert_eq!(inspect(&path, |_| true).status, InspectStatus::MemoryLimit);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+// ---------- tar: guard and crate must agree on the stream layout (S19-001) ----------
+
+fn gzip(raw: &[u8]) -> Vec<u8> {
+    let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    enc.write_all(raw).unwrap();
+    enc.finish().unwrap()
+}
+
+/// A regular-file header block with the given name and size field.
+fn file_header(name: &str, size: u64) -> tar::Header {
+    let mut header = tar::Header::new_ustar();
+    header.set_path(name).unwrap();
+    header.set_size(size);
+    header.set_mode(0o644);
+    header.set_cksum();
+    header
+}
+
+/// A PAX `x` block (with the given records) followed by one regular entry whose
+/// header claims `header_size` bytes; `body` is written as that entry's data.
+fn tar_with_pax(records: &[(&str, &[u8])], header_size: u64, body: &[u8]) -> Vec<u8> {
+    let mut builder = tar::Builder::new(Vec::new());
+    builder.append_pax_extensions(records.iter().map(|(k, v)| (*k, *v))).unwrap();
+    let mut raw = builder.into_inner().unwrap();
+    raw.truncate(raw.len() - 1024); // drop the end marker written by into_inner
+    raw.extend_from_slice(file_header("modell.stl", header_size).as_bytes());
+    raw.extend_from_slice(body);
+    raw.resize(raw.len().div_ceil(512) * 512 + 1024, 0);
+    raw
+}
+
+/// Runs list, inspect and extract on `raw` as .tar and .tar.gz and checks each
+/// result with `check`.
+fn for_tar_and_gz(dir: &Path, raw: &[u8], check: impl Fn(&str, Result<(), ArchiveError>, InspectStatus)) {
+    for (name, format, bytes) in [
+        ("t.tar", ArchiveFormat::Tar, raw.to_vec()),
+        ("t.tar.gz", ArchiveFormat::TarGz, gzip(raw)),
+    ] {
+        let path = dir.join(name);
+        fs::write(&path, bytes).unwrap();
+        check(name, list_entries(&path, format).map(|_| ()), inspect(&path, |_| true).status);
+        let dest = dir.join(format!("{name}.out"));
+        let result = extract_archive(&path, format, &dest, false, MAX_UNPACKED_BYTES, &|_| true);
+        check(name, result.map(|_| ()), inspect(&path, |_| true).status);
+        let _ = fs::remove_dir_all(&dest);
+    }
+}
+
+#[test]
+fn tar_pax_size_above_the_limit_is_rejected_before_reading() {
+    // (a) The x block claims a huge size for a header that says 7 bytes. The tar
+    // crate would trust the PAX value and skip ~1 TiB; the guard used to
+    // follow the header instead and lose step with the crate.
+    let dir = unique_dir("tarpaxhuge");
+    let huge = (1u64 << 40).to_string();
+    let raw = tar_with_pax(&[("size", huge.as_bytes())], 7, b"solid x");
+    for_tar_and_gz(&dir, &raw, |name, result, status| {
+        assert!(matches!(result, Err(ArchiveError::LimitExceeded)), "{name}: {result:?}");
+        assert_eq!(status, InspectStatus::TooLarge, "{name}");
+    });
+    // The attack shape behind S19-001: PAX moves the crate 1 KiB further than
+    // the header says; inside that gap sits a fake header claiming 1 GiB, so
+    // the old guard waved the crate's next (oversized) L block through as data.
+    let mut fake = file_header("tarnung.bin", 1 << 30).as_bytes().to_vec();
+    fake.resize(1024, 0);
+    let mut raw = tar_with_pax(&[("size", b"1024")], 0, &fake);
+    raw.truncate(512 * 3 + 1024);
+    let mut long = tar::Header::new_gnu();
+    long.set_path("././@LongLink").unwrap();
+    long.set_entry_type(tar::EntryType::GNULongName);
+    long.set_size(64 * 1024 * 1024);
+    long.set_cksum();
+    raw.extend_from_slice(long.as_bytes());
+    raw.extend_from_slice(&[b'a'; 4096]);
+    for_tar_and_gz(&dir, &raw, |name, result, status| {
+        assert!(matches!(result, Err(ArchiveError::Unreadable(_))), "{name}: {result:?}");
+        assert_eq!(status, InspectStatus::Unreadable, "{name}");
+    });
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn tar_gnu_sparse_entries_are_rejected() {
+    // (b) GNU sparse header (type S) with an isextended chain: the crate reads the
+    // follow-up blocks in addition to the data, which the guard cannot follow.
+    let dir = unique_dir("tarsparse");
+    for chain in [0usize, 3] {
+        let mut header = tar::Header::new_gnu();
+        header.set_path("loch.stl").unwrap();
+        header.set_entry_type(tar::EntryType::GNUSparse);
+        header.set_size(512);
+        header.set_mode(0o644);
+        if chain > 0 {
+            header.as_gnu_mut().unwrap().isextended[0] = 1;
+        }
+        header.set_cksum();
+        let mut raw = header.as_bytes().to_vec();
+        for i in 0..chain {
+            let mut ext = vec![0u8; 512];
+            ext[504] = u8::from(i + 1 < chain); // isextended of the follow-up block
+            raw.extend_from_slice(&ext);
+        }
+        raw.extend_from_slice(&[b'a'; 512]);
+        raw.extend_from_slice(&[0; 1024]);
+        for_tar_and_gz(&dir, &raw, |name, result, status| {
+            match &result {
+                Err(ArchiveError::Unsupported(msg)) => assert!(msg.contains("Sparse"), "{name}: {msg}"),
+                other => panic!("{name} (chain {chain}): {other:?}"),
+            }
+            assert_eq!(status, InspectStatus::Unsupported, "{name}");
+        });
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn tar_pax_size_differing_from_the_header_is_rejected() {
+    // (c) Both sizes small, but different: guard and crate would disagree.
+    let dir = unique_dir("tarpaxdiff");
+    let raw = tar_with_pax(&[("size", b"8")], 7, b"solid x!");
+    for_tar_and_gz(&dir, &raw, |name, result, status| {
+        match &result {
+            Err(ArchiveError::Unreadable(msg)) => assert!(msg.contains("PAX"), "{name}: {msg}"),
+            other => panic!("{name}: {other:?}"),
+        }
+        assert_eq!(status, InspectStatus::Unreadable, "{name}");
+    });
+    // A PAX size that matches the header is fine.
+    let raw = tar_with_pax(&[("size", b"7")], 7, b"solid x");
+    for_tar_and_gz(&dir, &raw, |name, result, status| {
+        assert!(result.is_ok(), "{name}: {result:?}");
+        assert_eq!(status, InspectStatus::Ok, "{name}");
+    });
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// x block (`size=7`), a global `g` header, then a regular entry with the given
+/// header size and a body of that length (7 bytes of data at most).
+fn tar_x_then_g(header_size: u64, body: &[u8]) -> Vec<u8> {
+    let mut builder = tar::Builder::new(Vec::new());
+    builder.append_pax_extensions([("size", &b"7"[..])]).unwrap();
+    let mut raw = builder.into_inner().unwrap();
+    raw.truncate(raw.len() - 1024);
+    let mut global = tar::Header::new_ustar();
+    global.set_path("pax_global_header").unwrap();
+    global.set_entry_type(tar::EntryType::XGlobalHeader);
+    global.set_size(0);
+    global.set_cksum();
+    raw.extend_from_slice(global.as_bytes());
+    raw.extend_from_slice(file_header("modell.stl", header_size).as_bytes());
+    raw.extend_from_slice(body);
+    raw.resize(raw.len().div_ceil(512) * 512 + 1024, 0);
+    raw
+}
+
+#[test]
+fn tar_global_header_does_not_inherit_the_pending_pax_size() {
+    // The crate hands the g header out as its own entry and drops the pending x
+    // data with it, so a following file is read with its own header size.
+    let dir = unique_dir("tarpaxglobal");
+    for (header_size, body) in [(7u64, &b"solid x"[..]), (8, &b"solid x!"[..])] {
+        let raw = tar_x_then_g(header_size, body);
+        for_tar_and_gz(&dir, &raw, |name, result, status| {
+            assert!(result.is_ok(), "{name} ({header_size}): {result:?}");
+            assert_eq!(status, InspectStatus::Ok, "{name}");
+        });
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn tar_header_size_near_u64_max_is_an_archive_error() {
+    // Base-256 size fields can carry values whose 512-rounding overflows u64.
+    let dir = unique_dir("tarsizemax");
+    for size in [u64::MAX, u64::MAX - 511, u64::MAX - 510] {
+        let mut header = file_header("modell.stl", 0);
+        let field = &mut header.as_mut_bytes()[124..136];
+        field[0] = 0x80;
+        field[1..4].fill(0);
+        field[4..].copy_from_slice(&size.to_be_bytes());
+        header.set_cksum();
+        let mut raw = header.as_bytes().to_vec();
+        raw.extend_from_slice(&[b'a'; 512]);
+        raw.extend_from_slice(&[0; 1024]);
+        for_tar_and_gz(&dir, &raw, |name, result, status| {
+            assert!(result.is_err(), "{name} ({size}): {result:?}");
+            assert_ne!(status, InspectStatus::Ok, "{name} ({size})");
+        });
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn tar_long_name_and_pax_path_still_extract() {
+    // (d) Normal archive: GNU L long name, then PAX path (+ matching size) entry.
+    let dir = unique_dir("tarlongpax");
+    let long_l = format!("Ordner/{}/eins.stl", "l".repeat(200));
+    let long_x = format!("Ordner/{}/{}/zwei.stl", "x".repeat(150), "y".repeat(150));
+    let mut raw = tar_bytes(&[(long_l.as_str(), b"solid eins")]);
+    raw.truncate(raw.len() - 1024); // drop the end marker
+    let mut builder = tar::Builder::new(Vec::new());
+    builder
+        .append_pax_extensions([("path", long_x.as_bytes()), ("size", b"10".as_slice()), ("mtime", b"1700000000")])
+        .unwrap();
+    builder.append(&file_header("kurz.stl", 10), &b"solid zwei"[..]).unwrap();
+    raw.extend_from_slice(&builder.into_inner().unwrap());
+    for (name, format, bytes) in [
+        ("ok.tar", ArchiveFormat::Tar, raw.clone()),
+        ("ok.tar.gz", ArchiveFormat::TarGz, gzip(&raw)),
+    ] {
+        let path = dir.join(name);
+        fs::write(&path, bytes).unwrap();
+        let entries = list_entries(&path, format).unwrap();
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, [long_l.as_str(), long_x.as_str()], "{name}");
+        assert_eq!(inspect(&path, |_| true).status, InspectStatus::Ok, "{name}");
+        let dest = dir.join(format!("{name}.out"));
+        extract_archive(&path, format, &dest, false, MAX_UNPACKED_BYTES, &|_| true).unwrap();
+        let found: Vec<Vec<u8>> = walk_files(&dest).iter().map(|p| fs::read(p).unwrap()).collect();
+        assert!(found.contains(&b"solid eins".to_vec()) && found.contains(&b"solid zwei".to_vec()), "{name}");
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+fn walk_files(dir: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for entry in fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            out.extend(walk_files(&path));
+        } else {
+            out.push(path);
+        }
+    }
+    out
+}
+
+#[test]
+fn tar_extension_data_per_entry_is_capped() {
+    // L, K and x at the single-block bound fill the per-entry cap; one more
+    // extension block before the entry is rejected by the guard itself.
+    let dir = unique_dir("tarextchain");
+    let mut raw = Vec::new();
+    for kind in [tar::EntryType::GNULongName, tar::EntryType::GNULongLink, tar::EntryType::XHeader] {
+        let mut header = tar::Header::new_gnu();
+        header.set_path("././@LongLink").unwrap();
+        header.set_entry_type(kind);
+        header.set_size(TAR_MAX_EXT_HEADER);
+        header.set_cksum();
+        raw.extend_from_slice(header.as_bytes());
+        raw.resize(raw.len() + TAR_MAX_EXT_HEADER as usize, b'a');
+    }
+    assert_eq!(TAR_MAX_EXT_CHAIN, 3 * TAR_MAX_EXT_HEADER);
+    let mut extra = tar::Header::new_gnu();
+    extra.set_path("././@LongLink").unwrap();
+    extra.set_entry_type(tar::EntryType::GNULongName);
+    extra.set_size(1);
+    extra.set_cksum();
+    raw.extend_from_slice(extra.as_bytes());
+    raw.extend_from_slice(&[b'a'; 512]);
+    raw.extend_from_slice(&[0; 1024]);
+    for_tar_and_gz(&dir, &raw, |name, result, status| {
+        assert!(matches!(result, Err(ArchiveError::MemoryLimit)), "{name}: {result:?}");
+        assert_eq!(status, InspectStatus::MemoryLimit, "{name}");
+    });
+    let _ = fs::remove_dir_all(&dir);
 }

@@ -12,8 +12,14 @@ pub mod geometry;
 pub mod safe_file;
 pub mod companions;
 pub mod companion_read;
+pub mod companion_actions;
+pub mod model_trash;
 pub mod rescan;
 pub mod disk_report;
+pub mod disk_apply;
+pub mod catalog_issues;
+pub mod disk_sync;
+pub mod disk_sync_settings;
 pub mod tagging;
 pub mod filament_check;
 pub mod printer_link;
@@ -22,6 +28,7 @@ pub mod thingiverse;
 pub mod backup;
 pub mod schema_versions;
 pub mod catalog_export;
+pub mod catalog_removal;
 
 #[cfg(test)]
 pub(crate) fn unique_test_dir(name: &str) -> std::path::PathBuf {
@@ -33,11 +40,45 @@ pub(crate) fn unique_test_dir(name: &str) -> std::path::PathBuf {
     dir
 }
 
+/// A made-up absolute path in the spelling of the system the tests run on. Tests write
+/// such paths the Unix way; on Windows a path without a drive is not absolute, and code
+/// that stores or compares native paths expects the native separator. Anything that does
+/// not start with a single `/` (a relative path, a real path of this system) stays as it is.
+#[cfg(test)]
+pub(crate) fn native_test_path(path: &str) -> String {
+    if cfg!(windows) && path.starts_with('/') && !path.starts_with("//") {
+        format!("C:{}", path.replace('/', "\\"))
+    } else {
+        path.to_owned()
+    }
+}
+
+/// `base` followed by the `/`-separated `tail`, exactly as written. `Path::join` cannot
+/// build a path with `.` or `..` in it on Windows when `base` is a verbatim path
+/// (`\\?\C:\...`, which is what `canonicalize` returns there): it resolves them
+/// while joining.
+#[cfg(test)]
+pub(crate) fn join_unresolved(base: &std::path::Path, tail: &str) -> std::path::PathBuf {
+    let mut path = base.as_os_str().to_owned();
+    for part in tail.split('/') {
+        path.push(std::path::MAIN_SEPARATOR_STR);
+        path.push(part);
+    }
+    path.into()
+}
+
 pub mod read;
 
 pub mod write;
 
 pub mod import;
+pub mod folder_create;
+pub mod file_move;
+pub mod file_rename;
+pub mod folder_move;
+pub mod folder_trash;
+pub mod date_rename;
+pub mod catalog_restore;
 
 pub mod fs_portable;
 

@@ -97,6 +97,8 @@ export function useModalDialog<T extends HTMLElement = HTMLDivElement>({ open, .
       // Backdrops may dismiss the dialog; clicks on background controls may not.
       if (event.target instanceof HTMLElement && event.target.hasAttribute('data-modal-backdrop') && event.target.nextElementSibling === dialog) return;
       if (event.target === dialog.parentElement && dialog.parentElement !== document.body) return;
+      // A script's own download anchor (click() on a throwaway <a download>) is not a background control; blocking it lost the file silently.
+      if (!event.isTrusted && event.target instanceof HTMLAnchorElement && event.target.hasAttribute('download')) return;
       event.preventDefault(); event.stopImmediatePropagation();
     };
     let backdropDown = false;

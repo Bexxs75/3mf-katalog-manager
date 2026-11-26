@@ -21,8 +21,8 @@ pub fn list_folders(state: State<AppState>) -> CmdResult<Vec<FolderDto>> {
 /// `name` ends up in `join`/`with_file_name` and must be a single harmless path
 /// component: "../../etc/x" or "/etc/x" would otherwise create outside the
 /// catalog, just by typing text (CWE-22).
-fn validate_folder_name(name: &str) -> CmdResult<()> {
-    validate_dir_name(name, true)
+pub(super) fn validate_folder_name(name: &str) -> CmdResult<()> {
+    katalog_core::folder_create::validate_folder_name(name).map_err(Into::into)
 }
 /// Creates a real folder on disk (below an existing folder, or - with
 /// `parent_id: None` - below a base directory the user picked in a dialog) and a
@@ -43,11 +43,7 @@ pub async fn create_folder(
     let new_dir = {
         let conn = lock_db(&state)?;
         match parent {
-            Some(pid) => {
-                let folders = db::list_folders(&conn).map_err(|e| e.to_string())?;
-                let parent_folder = folders.iter().find(|f| f.id == pid).ok_or_else(|| "folder not found".to_string())?;
-                std::path::PathBuf::from(&parent_folder.path).join(&name)
-            }
+            Some(pid) => new_dir_below_parent(&conn, pid, &name)?,
             None => {
                 let picked = app.dialog().file().blocking_pick_folder();
                 let Some(picked) = picked else {
@@ -62,54 +58,52 @@ pub async fn create_folder(
     create_folder_with_conn(&conn, parent, name, &new_dir, &state.sensitive_dirs).map(Some)
 }
 
+/// Target path of a new folder below the catalog folder `pid`.
+pub(super) fn new_dir_below_parent(conn: &Connection, pid: i64, name: &str) -> CmdResult<PathBuf> {
+    katalog_core::folder_create::new_dir_below_parent(conn, pid, name).map_err(Into::into)
+}
+
+/// The disk access of "create folder" (core trait) on top of the desktop's `Fs` boundary.
+struct FolderFs<'a>(&'a dyn Fs);
+
+impl katalog_core::folder_create::CreateFolderFs for FolderFs<'_> {
+    fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
+        self.0.canonicalize(path)
+    }
+    fn exists(&self, path: &Path) -> bool {
+        self.0.exists(path)
+    }
+    fn create_dir(&self, path: &Path) -> std::io::Result<()> {
+        self.0.create_dir(path)
+    }
+}
+
 /// Creation after path selection, without UI state so disk/DB outcomes are testable.
-fn create_folder_with_conn(
+pub(super) fn create_folder_with_conn(
     conn: &Connection,
     parent: Option<i64>,
     name: String,
     new_dir: &Path,
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<FolderDto> {
-    reject_if_sensitive_path(new_dir, sensitive_dirs)?;
-    let parent = match parent {
-        Some(id) => Some(id),
-        None => {
-            let mut folders = db::list_folders(conn).map_err(|e| e.to_string())?;
-            // Canonical spelling respects the actual filesystem's case rules,
-            // including case-insensitive macOS volumes and symlinked selections.
-            for folder in &mut folders {
-                if let Ok(path) = Path::new(&folder.path).canonicalize() {
-                    folder.path = path.to_string_lossy().into_owned();
-                }
-            }
-            let base = new_dir.parent().ok_or_else(|| "folder has no parent path".to_string())?;
-            let base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
-            find_catalog_parent(&base, &folders)
-        }
-    };
-    if new_dir.exists() {
-        return Err(map_create_folder_error(std::io::ErrorKind::AlreadyExists.into(), new_dir));
-    }
-    std::fs::create_dir(new_dir).map_err(|e| map_create_folder_error(e, new_dir))?;
-
-    let new_id = db::insert_folder_with_parent(conn, &name, parent, &new_dir.to_string_lossy())
-        .map_err(|e| e.to_string())?;
-    Ok(FolderDto {
-        id: new_id.to_string(),
-        name,
-        path: new_dir.to_string_lossy().to_string(),
-        parent_id: parent.map(|p| p.to_string()),
-        count: 0,
-        missing: false,
-        move_target: true,
-    })
+    create_folder_with_conn_fs(conn, &RealFs, parent, name, new_dir, sensitive_dirs)
 }
+
+/// [`create_folder_with_conn`] with the file system passed in (tests fail a step on purpose).
+fn create_folder_with_conn_fs(
+    conn: &Connection,
+    fs: &dyn Fs,
+    parent: Option<i64>,
+    name: String,
+    new_dir: &Path,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<FolderDto> {
+    katalog_core::folder_create::create_folder(conn, &FolderFs(fs), parent, name, new_dir, sensitive_dirs)
+        .map_err(Into::into)
+}
+#[cfg(test)]
 fn map_create_folder_error(error: std::io::Error, path: &Path) -> CmdError {
-    if error.kind() == std::io::ErrorKind::AlreadyExists {
-        CmdError::coded_with(ErrorCode::FolderExists, [path.display()])
-    } else {
-        error.to_string().into()
-    }
+    katalog_core::folder_create::map_create_folder_error(error, path).into()
 }
 
 pub(super) fn comparison_path(path: &Path) -> PathBuf {
@@ -130,16 +124,41 @@ pub(super) fn reject_catalog_root_relocation(conn: &Connection, path: &Path) -> 
 }
 
 // Pure component comparison; callers resolve existing filesystem paths first.
+#[cfg(test)]
 pub(super) fn find_catalog_parent(path: &Path, folders: &[db::models::FolderRecord]) -> Option<i64> {
-    let path = comparison_path(path);
-    folders.iter()
-        .filter_map(|folder| {
-            let parent = comparison_path(Path::new(&folder.path));
-            (!parent.as_os_str().is_empty() && path.starts_with(&parent))
-                .then_some((parent.components().count(), folder.id))
-        })
-        .max_by_key(|(depth, _)| *depth)
-        .map(|(_, id)| id)
+    katalog_core::folder_create::find_catalog_parent(path, folders)
+}
+
+/// The disk access of "rename/move folder" (core trait) on top of the desktop's `Fs` boundary:
+/// every call goes to the same `Fs` method as before, so the sequence of calls (and the
+/// injected faults of the tests) is unchanged.
+struct FolderMoveFsAdapter<'a>(&'a dyn Fs);
+
+impl katalog_core::file_rename::FileRenameFs for FolderMoveFsAdapter<'_> {
+    fn symlink_metadata(&self, path: &Path) -> std::io::Result<std::fs::Metadata> {
+        self.0.symlink_metadata(path)
+    }
+    fn read_dir_names(&self, dir: &Path) -> std::io::Result<Vec<std::ffi::OsString>> {
+        self.0.read_dir_names(dir)
+    }
+    fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
+        self.0.canonicalize(path)
+    }
+    fn rename(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+        self.0.rename(from, to)
+    }
+    fn move_file(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+        move_file_with(self.0, from, to)
+    }
+}
+
+impl katalog_core::folder_move::FolderMoveFs for FolderMoveFsAdapter<'_> {
+    fn is_dir(&self, path: &Path) -> bool {
+        self.0.is_dir(path)
+    }
+    fn exists(&self, path: &Path) -> bool {
+        self.0.exists(path)
+    }
 }
 
 /// Core logic of `rename_folder`, without `State`, so it's testable.
@@ -149,44 +168,18 @@ fn rename_folder_with_conn(
     name: String,
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<()> {
-    validate_folder_name(&name)?;
-    let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
-    let folder = folders.iter().find(|f| f.id == id).ok_or_else(|| "folder not found".to_string())?.clone();
+    rename_folder_with_conn_fs(&RealFs, conn, id, name, sensitive_dirs)
+}
 
-    let old_path = std::path::PathBuf::from(&folder.path);
-    reject_catalog_root_relocation(conn, &old_path)?;
-    let new_path = old_path.with_file_name(&name);
-    let expanded = expand_sensitive_dirs(sensitive_dirs);
-    archives::check_managed_location(&old_path, &expanded)?;
-    archives::check_managed_location(&new_path, &expanded)?;
-
-    if new_path == old_path {
-        return Ok(());
-    }
-    if rename::target_collides(&old_path, &new_path).map_err(|e| e.to_string())? {
-        return Err(CmdError::coded_with(ErrorCode::RenameTargetFolderExists, [new_path.display()]));
-    }
-    rename::rename_on_disk(&old_path, &new_path).map_err(|e| e.to_string())?;
-
-    let db_result = (|| -> Result<(), DbError> {
-        let tx = conn.unchecked_transaction()?;
-        db::rename_folder_name(&tx, id, &name)?;
-        db::update_paths_under_folder(&tx, id, &folder.path, &new_path.to_string_lossy())?;
-        tx.commit().map_err(DbError::from)
-    })();
-
-    if let Err(db_err) = db_result {
-        if let Err(rollback_err) = rename::rename_on_disk(&new_path, &old_path) {
-            return Err(format!(
-                "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Ordner-Umbenennung fehlgeschlagen ({rollback_err}) - Ordner heisst jetzt {}, DB verweist teilweise noch auf {}",
-                new_path.display(),
-                old_path.display()
-            )
-            .into());
-        }
-        return Err(db_err.to_string().into());
-    }
-    Ok(())
+/// [`rename_folder_with_conn`] with the file system passed in (tests fail a step on purpose).
+pub(super) fn rename_folder_with_conn_fs(
+    fs: &dyn Fs,
+    conn: &Connection,
+    id: i64,
+    name: String,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<()> {
+    katalog_core::folder_move::rename_folder(conn, &FolderMoveFsAdapter(fs), id, name, sensitive_dirs).map_err(Into::into)
 }
 /// Renames a real folder on disk (`std::fs::rename`) and updates `folders.name`
 /// plus, recursively, `folders.path`/`files.path` for the folder and all its
@@ -198,18 +191,6 @@ pub fn rename_folder(state: State<AppState>, folder_id: String, name: String) ->
     let conn = lock_db(&state)?;
     rename_folder_with_conn(&conn, id, name, &state.sensitive_dirs)
 }
-/// Whether `candidate_id` is a (direct or indirect) descendant of `ancestor_id`.
-fn is_descendant(folders: &[db::models::FolderRecord], candidate_id: i64, ancestor_id: i64) -> bool {
-    let mut current = candidate_id;
-    while let Some(f) = folders.iter().find(|f| f.id == current) {
-        match f.parent_id {
-            Some(pid) if pid == ancestor_id => return true,
-            Some(pid) => current = pid,
-            None => return false,
-        }
-    }
-    false
-}
 /// Core logic of `move_folder`, without `State`, so it's testable.
 fn move_folder_with_conn(
     conn: &Connection,
@@ -217,82 +198,18 @@ fn move_folder_with_conn(
     target: Option<i64>,
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<()> {
-    let Some(target) = target else {
-        // There's no "move to root": the disk would stay unchanged, but the DB would
-        // no longer see a parent.
-        return Err("Ein Ordner kann nicht ohne Zielordner verschoben werden".into());
-    };
+    move_folder_with_conn_fs(&RealFs, conn, id, target, sensitive_dirs)
+}
 
-    let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
-    let folder = folders.iter().find(|f| f.id == id).ok_or_else(|| "folder not found".to_string())?.clone();
-
-    if target == id {
-        return Err(CmdError::coded(ErrorCode::FolderMoveIntoSelf));
-    }
-    if is_descendant(&folders, target, id) {
-        return Err(CmdError::coded(ErrorCode::FolderMoveIntoDescendant));
-    }
-
-    let new_parent_path = folders
-        .iter()
-        .find(|f| f.id == target)
-        .map(|f| f.path.clone())
-        .ok_or_else(|| "target folder not found".to_string())?;
-    let target = Some(target);
-
-    let old_path = std::path::PathBuf::from(&folder.path);
-    reject_catalog_root_relocation(conn, &old_path)?;
-    let name = old_path.file_name().ok_or_else(|| "invalid folder path".to_string())?;
-    let new_path = std::path::PathBuf::from(&new_parent_path).join(name);
-    let expanded = expand_sensitive_dirs(sensitive_dirs);
-    archives::check_managed_location(&old_path, &expanded)?;
-    archives::check_managed_location(&new_path, &expanded)?;
-
-    // Without these checks a vanished folder would surface as a raw OS error.
-    if !old_path.is_dir() {
-        return Err(CmdError::coded_with(ErrorCode::FolderMissingOnDisk, [old_path.display()]));
-    }
-    let new_parent = Path::new(&new_parent_path);
-    if !new_parent.is_dir() {
-        return Err(CmdError::coded_with(ErrorCode::TargetFolderMissingOnDisk, [new_parent.display()]));
-    }
-    // The ids can disagree with the disk (outdated catalog, symlinks, differing
-    // case on case-insensitive volumes), so the real locations are compared too.
-    if let (Ok(source), Ok(parent)) = (old_path.canonicalize(), new_parent.canonicalize()) {
-        if comparison_path(&parent).starts_with(comparison_path(&source)) {
-            return Err(CmdError::coded(ErrorCode::FolderMoveIntoSelfOrDescendant));
-        }
-        if old_path.parent().and_then(|p| p.canonicalize().ok()).is_some_and(|current| comparison_path(&current) == comparison_path(&parent)) {
-            return Err(CmdError::coded(ErrorCode::FolderMoveAlreadyThere));
-        }
-    }
-    if new_path.exists() {
-        return Err(CmdError::coded_with(ErrorCode::FolderMoveNameTaken, [new_path.display()]));
-    }
-    std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
-
-    // Parent and paths in one transaction, so the DB is never half-updated while
-    // the disk has already moved. unchecked_transaction because we only have
-    // `&Connection`.
-    let db_result = (|| -> Result<(), DbError> {
-        let tx = conn.unchecked_transaction()?;
-        db::set_folder_parent(&tx, id, target)?;
-        db::update_paths_under_folder(&tx, id, &folder.path, &new_path.to_string_lossy())?;
-        tx.commit().map_err(DbError::from)
-    })();
-
-    if let Err(db_err) = db_result {
-        if let Err(rollback_err) = std::fs::rename(&new_path, &old_path) {
-            return Err(format!(
-                "DB-Update fehlgeschlagen ({db_err}) UND Rollback des Ordner-Moves fehlgeschlagen ({rollback_err}) - Ordner liegt jetzt unter {}, DB verweist teilweise noch auf {}",
-                new_path.display(),
-                old_path.display()
-            )
-            .into());
-        }
-        return Err(db_err.to_string().into());
-    }
-    Ok(())
+/// [`move_folder_with_conn`] with the file system passed in (tests fail a step on purpose).
+pub(super) fn move_folder_with_conn_fs(
+    fs: &dyn Fs,
+    conn: &Connection,
+    id: i64,
+    target: Option<i64>,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<()> {
+    katalog_core::folder_move::move_folder(conn, &FolderMoveFsAdapter(fs), id, target, sensitive_dirs).map_err(Into::into)
 }
 /// Moves a folder on disk below another parent folder and updates `parent_id`
 /// and all paths below. Rejects cycles and `new_parent_id: None`.
@@ -807,6 +724,173 @@ mod tests {
         let stored = folders.iter().find(|f| f.id.to_string() == dto.id).unwrap();
         assert_eq!(stored.parent_id, Some(parent));
         assert_eq!(stored.path, dto.path);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    fn rows(conn: &Connection) -> Vec<(i64, String, Option<i64>, String)> {
+        let mut rows: Vec<_> =
+            db::list_folders(conn).unwrap().into_iter().map(|f| (f.id, f.name, f.parent_id, f.path)).collect();
+        rows.sort_by_key(|r| r.0);
+        rows
+    }
+
+    #[test]
+    fn create_folder_parity_name_rules_map_to_codes() {
+        let cases: &[(&str, ErrorCode, &[&str])] = &[
+            ("", ErrorCode::FolderNameEmpty, &[]),
+            ("   ", ErrorCode::FolderNameEmpty, &[]),
+            ("a/b", ErrorCode::FolderNameForbiddenChar, &["/"]),
+            ("a\0b", ErrorCode::FolderNameForbiddenChar, &["U+0000"]),
+            ("D:Neu", ErrorCode::FolderNameForbiddenChar, &[":"]),
+            (".", ErrorCode::FolderNameNotAllowed, &[]),
+            ("..", ErrorCode::FolderNameNotAllowed, &[]),
+            ("a.", ErrorCode::FolderNameEndsWithDotOrSpace, &[]),
+            ("a ", ErrorCode::FolderNameEndsWithDotOrSpace, &[]),
+            ("CON", ErrorCode::FolderNameWindowsReserved, &[]),
+            ("nul.txt", ErrorCode::FolderNameWindowsReserved, &[]),
+            ("lpt9.log", ErrorCode::FolderNameWindowsReserved, &[]),
+        ];
+        for (name, code, params) in cases {
+            let err = validate_folder_name(name).unwrap_err();
+            assert!(err.is(*code, params), "{name:?}: {err:?}");
+        }
+        let long = "a".repeat(MAX_DIR_NAME_BYTES + 1);
+        assert!(validate_folder_name(&long).unwrap_err().is(ErrorCode::FolderNameTooLong, &[]));
+        assert!(validate_folder_name(&"a".repeat(MAX_DIR_NAME_BYTES)).is_ok());
+    }
+
+    #[test]
+    fn create_folder_parity_dto_rows_and_disk() {
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_parity_dto");
+        let parent = db::insert_folder_with_parent(&conn, "base", None, &base.to_string_lossy()).unwrap();
+        let dir = base.join("Neu");
+        let dto = create_folder_with_conn(&conn, Some(parent), "Neu".into(), &dir, &[]).unwrap();
+        assert!(dir.is_dir());
+        assert_eq!(dto.name, "Neu");
+        assert_eq!(dto.path, dir.to_string_lossy());
+        assert_eq!((dto.count, dto.missing, dto.move_target), (0, false, true));
+        assert_eq!(dto.parent_id, Some(parent.to_string()));
+        assert_eq!(rows(&conn), vec![
+            (parent, "base".into(), None, base.to_string_lossy().into_owned()),
+            (dto.id.parse().unwrap(), "Neu".into(), Some(parent), dir.to_string_lossy().into_owned()),
+        ]);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn create_folder_parity_without_catalog_parent_stores_root() {
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_parity_root");
+        let dir = base.join("x");
+        let dto = create_folder_with_conn(&conn, None, "x".into(), &dir, &[]).unwrap();
+        assert_eq!(dto.parent_id, None);
+        assert_eq!(rows(&conn).len(), 1);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn create_folder_parity_missing_parent_on_disk_is_plain_io_error() {
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_parity_noparent");
+        let dir = base.join("gone").join("child");
+        let err = create_folder_with_conn(&conn, None, "child".into(), &dir, &[]).unwrap_err();
+        assert!(!err.expected, "{err:?}");
+        assert_eq!(err.message, std::fs::create_dir(&dir).unwrap_err().to_string());
+        assert!(rows(&conn).is_empty());
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn create_folder_parity_sensitive_path_refused_before_disk() {
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_parity_sensitive");
+        let dir = base.join("child");
+        let expected = reject_if_sensitive_path(&dir, std::slice::from_ref(&base)).unwrap_err();
+        let err = create_folder_with_conn(&conn, None, "child".into(), &dir, std::slice::from_ref(&base)).unwrap_err();
+        assert_eq!((err.expected, &err.message, &err.params), (expected.expected, &expected.message, &expected.params));
+        assert!(!dir.exists());
+        assert!(rows(&conn).is_empty());
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn create_folder_parity_permission_denied_is_unexpected_and_unregistered() {
+        use std::os::unix::fs::PermissionsExt;
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_parity_perm");
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let dir = base.join("child");
+        let can_write = std::fs::create_dir(base.join("probe")).is_ok();
+        let result = create_folder_with_conn(&conn, None, "child".into(), &dir, &[]);
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if !can_write {
+            let err = result.unwrap_err();
+            assert!(!err.expected, "{err:?}");
+            assert!(!dir.exists());
+            assert!(rows(&conn).is_empty());
+        }
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn create_folder_parity_existing_file_is_folder_exists() {
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_parity_file");
+        let dir = base.join("f");
+        std::fs::write(&dir, b"x").unwrap();
+        let err = create_folder_with_conn(&conn, None, "f".into(), &dir, &[]).unwrap_err();
+        assert!(err.is(ErrorCode::FolderExists, &[&dir.display().to_string()]), "{err:?}");
+        assert!(dir.is_file());
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn create_folder_fault_mkdir_error_maps_and_leaves_no_row() {
+        use super::super::fs_boundary::{FaultFs, Op};
+        use std::io::ErrorKind::{AlreadyExists, PermissionDenied};
+        for (kind, coded) in [(PermissionDenied, false), (AlreadyExists, true)] {
+            let conn = db::connect_in_memory().unwrap();
+            let base = unique_test_dir("create_fault_mkdir");
+            let dir = base.join("child");
+            let fs = FaultFs::new().fail(Op::CreateDir, 1, kind);
+            let err = create_folder_with_conn_fs(&conn, &fs, None, "child".into(), &dir, &[]).unwrap_err();
+            if coded {
+                assert!(err.is(ErrorCode::FolderExists, &[&dir.display().to_string()]), "{err:?}");
+            } else {
+                assert!(!err.expected, "{err:?}");
+                assert!(err.message.contains("CreateDir"), "{err:?}");
+            }
+            assert!(!dir.exists());
+            assert!(rows(&conn).is_empty());
+            std::fs::remove_dir_all(base).unwrap();
+        }
+    }
+
+    #[test]
+    fn create_folder_fault_case_insensitive_sibling_is_folder_exists_before_mkdir() {
+        use super::super::fs_boundary::{FaultFs, Op};
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_fault_case");
+        std::fs::create_dir(base.join("Neu")).unwrap();
+        let dir = base.join("neu");
+        let fs = FaultFs::new().case_insensitive();
+        let err = create_folder_with_conn_fs(&conn, &fs, None, "neu".into(), &dir, &[]);
+        let ci_hit = err.as_ref().err().is_some_and(|e| e.is(ErrorCode::FolderExists, &[&dir.display().to_string()]));
+        // On a case-sensitive disk the lookalike is a different folder; both outcomes are consistent.
+        assert!(ci_hit || dir.is_dir(), "{err:?}");
+        assert_eq!(fs.count(Op::CreateDir) == 0, ci_hit);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn create_folder_parity_parent_lookup() {
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_parity_lookup");
+        let parent = db::insert_folder_with_parent(&conn, "base", None, &base.to_string_lossy()).unwrap();
+        assert_eq!(new_dir_below_parent(&conn, parent, "n").unwrap(), base.join("n"));
+        assert_eq!(new_dir_below_parent(&conn, parent + 99, "n").unwrap_err().message, "folder not found");
         std::fs::remove_dir_all(base).unwrap();
     }
 

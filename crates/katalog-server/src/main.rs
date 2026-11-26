@@ -1,11 +1,23 @@
 use katalog_server::config::Config;
 use std::{io::IsTerminal, path::PathBuf};
 
-const HELP: &str = "katalog-server – Katalog im Browser (nur lesend; Schreibmodus, Upload und Dateiverwaltung nur auf ausdrückliche Einstellung)\n\nVerwendung: katalog-server [--help | --version | set-password]\n\nKATALOG_DB                Bestehende catalog.db (Pflicht)\nKATALOG_ROOTS             Erlaubte Dateiwurzeln (Pflicht; Unix :, Windows ;)\nKATALOG_AUTH_FILE         Passwortdatei (Vorgabe: neben catalog.db/web-auth.json)\nKATALOG_PASSWORD          Passwort nur zur Ersteinrichtung\nKATALOG_PASSWORD_FILE     Alternativ Passwortdatei nur zur Ersteinrichtung\nKATALOG_STATIC_DIR        Optionales Web-Build-Verzeichnis statt Smoke-Seite\nKATALOG_BIND              IP:Port (Vorgabe 127.0.0.1:8080)\nKATALOG_ALLOWED_HOSTS     Erlaubte Hosts, kommagetrennt, optional mit Port\n                         IPv6 in Klammern; Loopback-Vorgabe: localhost,\n                         127.0.0.1, [::1] jeweils mit Bind-Port.\n                         Bei anderer Bindung Pflicht (Start bricht sonst ab).\nKATALOG_ALLOW_NO_AUTH=1    Nur bei Loopback: Anmeldung und CSRF abschalten\nKATALOG_TRUST_PROXY=1      Forwarded-Header für Client-IP und HTTPS vertrauen\n\nWurzeln dürfen nicht von Fremden beschreibbar sein.\nBei KATALOG_TRUST_PROXY=1 darf der Server nur hinter einem abschirmenden Proxy stehen.\nDer Proxy muss X-Forwarded-For anhängen oder überschreiben.\nKATALOG_ALLOW_NO_AUTH=1 darf nicht mit KATALOG_TRUST_PROXY=1 kombiniert werden.\nCookies (katalog_session) sind nicht nach Port getrennt: Andere HTTP-Dienste\nauf demselben Host erhalten das Cookie. Eigenen Host-/Domainnamen verwenden.\nDas Zufallspasswort bleibt dauerhaft im Log (docker logs); nach dem ersten\nAnmelden ändern.\nDer Server bietet kein HTTPS; vorgesehen für Heimnetz/VPN.\nOhne Passwortdatei erfolgt eine Ersteinrichtung mit zufälligem Einmalpasswort.\nset-password liest ein neues Passwort von stdin (Terminal: zweimal, Eingabe sichtbar),\nverlangt 12 bis 128 Zeichen und speichert es atomar. Keine Passwortargumente.\nEin bereits laufender Server muss danach neu gestartet werden.\n";
+const HELP: &str = "katalog-server – Katalog im Browser (nur lesend; Schreibmodus, Upload und Dateiverwaltung nur auf ausdrückliche Einstellung)\n\nVerwendung: katalog-server [--help | --version | set-password | health]\n\nKATALOG_DB                Bestehende catalog.db (Pflicht)\nKATALOG_ROOTS             Erlaubte Dateiwurzeln (Pflicht; Unix :, Windows ;)\nKATALOG_SOURCE_ROOTS      Quellwurzeln (Unix :, Windows ;), leer = aus\n                         Bestehende Verzeichnisse; getrennt von Trash, Upload und Auth.\nKATALOG_PRINTER_ALLOW     Hosts/IP/CIDR, kommagetrennt, ohne Ports; leer = aus\n                         Zusätzlich zur Heimnetz-Prüfung; Metadata-Adressen gesperrt.\nKATALOG_AUTH_FILE         Passwortdatei (Vorgabe: neben catalog.db/web-auth.json)\nKATALOG_PASSWORD          Passwort nur zur Ersteinrichtung\nKATALOG_PASSWORD_FILE     Alternativ Passwortdatei nur zur Ersteinrichtung\nKATALOG_STATIC_DIR        Optionales Web-Build-Verzeichnis statt Smoke-Seite\nKATALOG_BIND              IP:Port (Vorgabe 127.0.0.1:8080)\nKATALOG_ALLOWED_HOSTS     Erlaubte Hosts, kommagetrennt, optional mit Port\n                         IPv6 in Klammern; Loopback-Vorgabe: localhost,\n                         127.0.0.1, [::1] jeweils mit Bind-Port.\n                         Bei anderer Bindung Pflicht (Start bricht sonst ab).\nKATALOG_ALLOW_NO_AUTH=1    Nur bei Loopback: Anmeldung und CSRF abschalten\nKATALOG_LOCK=off          Instanzsperre abschalten (SMB/NFS; Zugriff selbst koordinieren)\nKATALOG_TRUST_PROXY=1      Forwarded-Header für Client-IP und HTTPS vertrauen\n                         Erfordert KATALOG_TRUSTED_PROXIES, sonst startet der Server nicht.\nKATALOG_TRUSTED_PROXIES   IP/CIDR der Reverse-Proxys (IPv4/IPv6, kommagetrennt, z. B. 172.18.0.5,::1; nur feste Proxy-Adressen, kein ganzes Netz).\n                         Nur Header von diesen Peers zählen; ein vom Proxy gesetztes\n                         X-Forwarded-For wird von rechts abgebaut, die erste nicht\n                         vertraute Adresse ist der Client. /0 ist nicht erlaubt.\n\nWurzeln dürfen nicht von Fremden beschreibbar sein.\nBei KATALOG_TRUST_PROXY=1 darf der Server nur hinter einem abschirmenden Proxy stehen.\nDer Proxy muss X-Forwarded-For anhängen oder überschreiben.\nKATALOG_ALLOW_NO_AUTH=1 darf nicht mit KATALOG_TRUST_PROXY=1 kombiniert werden.\nCookies (katalog_session) sind nicht nach Port getrennt: Andere HTTP-Dienste\nauf demselben Host erhalten das Cookie. Eigenen Host-/Domainnamen verwenden.\nEin erzeugtes Zufallspasswort steht nicht im Log, sondern in web-initial-password.txt\nneben der Passwortdatei (Rechte 0600); nach dem ersten Anmelden ändern, die Datei\nwird dann entfernt.\nDer Server bietet kein HTTPS; vorgesehen für Heimnetz/VPN.\nOhne Passwortdatei erfolgt eine Ersteinrichtung mit zufälligem Einmalpasswort.\nset-password liest ein neues Passwort von stdin (Terminal: zweimal, Eingabe sichtbar),\nverlangt 12 bis 128 Zeichen und speichert es atomar. Keine Passwortargumente.\nReserviert: web-fsops.json, web-uploads.json, web-restore.json, web-initial-password.txt und .bak-*.\nhealth fragt /api/health auf der eigenen Bindung (KATALOG_BIND, erster Eintrag von\nKATALOG_ALLOWED_HOSTS als Host); Exit-Code 0 = gesund, 1 = nicht erreichbar oder Fehler.\nGedacht für HEALTHCHECK im Container ohne Shell und curl.\nAuth darf DB, SQLite-Begleitdateien und <DB>.lock nicht ersetzen.\nOhne KATALOG_DB gelten dafür die festen Namen ab catalog.db.\nEin bereits laufender Server muss danach neu gestartet werden.\nstep-worker ist ein interner Unterbefehl der STEP-Vorschau und nicht zum Aufruf gedacht.\n";
 
-#[tokio::main]
-async fn main() {
-    if let Err(message) = run().await {
+fn main() {
+    // The STEP worker must sandbox itself while it is still the only thread, so it is
+    // dispatched before the async runtime starts its worker threads.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("step-worker") {
+        std::process::exit(katalog_server::step_worker::worker_main(&args[1..]));
+    }
+    let runtime = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            eprintln!("Fehler: Laufzeit nicht startbar: {e}");
+            std::process::exit(1);
+        }
+    };
+    if let Err(message) = runtime.block_on(run()) {
         eprintln!("Fehler: {message}");
         std::process::exit(1);
     }
@@ -37,15 +49,18 @@ async fn run() -> Result<(), String> {
                         .join("web-auth.json")
                 }
             };
-            katalog_server::config::validate_auth_journal_name(&path)?;
-            if let Some(db) = std::env::var_os("KATALOG_DB") {
-                katalog_server::config::validate_auth_path(std::path::Path::new(&db), &path)?;
-            }
+            let db = std::env::var_os("KATALOG_DB")
+                .filter(|p| !p.is_empty())
+                .map(PathBuf::from);
+            katalog_server::config::validate_password_path(db.as_deref(), &path)?;
             let stdin = std::io::stdin();
             let terminal = stdin.is_terminal();
             katalog_server::password::set_password(&path, &mut stdin.lock(), terminal).await?;
             eprintln!("Passwort gespeichert. Einen laufenden Server bitte neu starten.");
             return Ok(());
+        }
+        [arg] if arg == "health" => {
+            return katalog_server::health::run(|key| std::env::var(key).ok());
         }
         [] => {}
         _ => return Err("Unbekannte Argumente; siehe --help".into()),
@@ -53,9 +68,12 @@ async fn run() -> Result<(), String> {
     let config = Config::from_env()?;
     let bind = config.bind;
     let mode = config.mode_description();
-    let trust_proxy = config.trust_proxy;
-    if config.trust_proxy && !bind.ip().is_loopback() {
-        eprintln!("WARNUNG: KATALOG_TRUST_PROXY=1 bei Nicht-Loopback-Bindung: Proxy-Header sind fälschbar, wenn der Server ohne abschirmenden Proxy erreichbar ist; die Pro-IP-Verbindungsgrenze greift dann nicht.");
+    let trusted_proxies = config.trusted_proxies.clone();
+    if config.trust_proxy {
+        eprintln!("Proxy-Header (X-Forwarded-For/-Proto) gelten nur von den Peers aus KATALOG_TRUSTED_PROXIES; alle anderen Peers werden mit ihrer eigenen Adresse behandelt.");
+        for net in config.trusted_proxies.broad_entries() {
+            eprintln!("WARNUNG: KATALOG_TRUSTED_PROXIES enthält das breite Netz {net}. Wer aus diesem Netz verbindet, kann X-Forwarded-For frei setzen und damit die Anmeldesperre pro Client umgehen. Empfohlen: nur die feste Adresse des Proxys (IPv4 /32, IPv6 /128).");
+        }
     }
     let app = katalog_server::initialize(config).await?;
     let listener = tokio::net::TcpListener::bind(bind)
@@ -65,8 +83,8 @@ async fn run() -> Result<(), String> {
         .local_addr()
         .map_err(|e| format!("Adresse nicht lesbar: {e}"))?;
     eprintln!("http://{address} – Katalog {mode}");
-    let per_peer = (!trust_proxy).then_some(katalog_server::transport::MAX_CONNECTIONS_PER_PEER);
-    katalog_server::transport::serve(listener, app, per_peer, katalog_server::transport::shutdown_signal())
+    // Trusted proxies are exempt from the per-peer limit; every other peer is limited by its own address.
+    katalog_server::transport::serve(listener, app, Some(katalog_server::transport::MAX_CONNECTIONS_PER_PEER), trusted_proxies, katalog_server::transport::shutdown_signal())
         .await
         .map_err(|e| format!("HTTP-Server fehlgeschlagen: {e}"))
 }

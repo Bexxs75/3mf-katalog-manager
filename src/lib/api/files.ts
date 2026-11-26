@@ -35,8 +35,8 @@ export type DateRenameStatus =
   | 'skip_too_long' | 'skip_external' | 'skip_no_date' | 'skip_invalid';
 export interface DateRenamePreview { id: string; oldName: string; newName: string; status: DateRenameStatus }
 export interface DateRenameResult { id: string; status: 'renamed' | 'failed'; reason?: string }
-// Mirrors the backend limit per call.
-export const DATE_RENAME_MAX_ITEMS = 5000;
+// Mirrors the backend limit per call (the web server takes 200 per request).
+export const DATE_RENAME_MAX_ITEMS = import.meta.env.VITE_TARGET === 'web' ? 200 : 5000;
 export function previewDateRename(fileIds: string[], dateSource: DateRenameSource) {
   return invoke<DateRenamePreview[]>('preview_date_rename', { fileIds, dateSource });
 }

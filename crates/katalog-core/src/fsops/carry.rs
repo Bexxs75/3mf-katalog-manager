@@ -506,6 +506,11 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     /// Removes the destination folder this operation made, if it is still that very
     /// inode and empty. `rmdir` refuses a non-empty folder, so this cannot lose files.
     pub(super) fn remove_created_extras(&mut self, i: &Intent, root: usize) {
+        self.remove_extras_only(i, root);
+        self.remove_restore_parents(i, root);
+    }
+
+    fn remove_extras_only(&mut self, i: &Intent, root: usize) {
         let Some(ExtrasDir {
             relative,
             identity: Some(identity),

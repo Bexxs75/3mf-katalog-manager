@@ -16,23 +16,39 @@ struct Fixture {
 }
 impl Fixture {
     async fn new(enabled: bool) -> Self {
+        Self::with_layout(enabled, false).await
+    }
+    /// `two_roots`: models/x/a and models/x/b as roots (upload folder in a) next to a desktop
+    /// trash folder that is shallower than both, so it sorts first in the comparison.
+    async fn with_layout(enabled: bool, two_roots: bool) -> Self {
         let mut random = [0; 16];
         getrandom::fill(&mut random).unwrap();
         let dir = std::env::temp_dir().join(format!(
             "web-fileops-http-{:032x}",
             u128::from_ne_bytes(random)
         ));
-        for sub in ["config", "models/uploads", "static"] {
+        let (roots, upload) = if two_roots {
+            let (a, b) = (dir.join("models/x/a"), dir.join("models/x/b"));
+            (std::env::join_paths([&a, &b]).unwrap().to_string_lossy().into_owned(), a.join("uploads"))
+        } else {
+            (dir.join("models").to_string_lossy().into_owned(), dir.join("models/uploads"))
+        };
+        for sub in ["config", "static"] {
             std::fs::create_dir_all(dir.join(sub)).unwrap();
+        }
+        std::fs::create_dir_all(&upload).unwrap();
+        if two_roots {
+            std::fs::create_dir_all(dir.join("models/x/b")).unwrap();
+            std::fs::create_dir_all(dir.join("config/trash")).unwrap();
         }
         let path = dir.join("config/catalog.db");
         drop(db::connect(&path).unwrap());
         let config = Config::from_lookup(|key| match key {
             "KATALOG_DB" => Some(path.to_string_lossy().into_owned()),
-            "KATALOG_ROOTS" => Some(dir.join("models").to_string_lossy().into_owned()),
+            "KATALOG_ROOTS" => Some(roots.clone()),
             "KATALOG_STATIC_DIR" => Some(dir.join("static").to_string_lossy().into_owned()),
             "KATALOG_FILE_OPS" if enabled => Some("1".into()),
-            "KATALOG_UPLOAD_DIR" => Some(dir.join("models/uploads").to_string_lossy().into_owned()),
+            "KATALOG_UPLOAD_DIR" => Some(upload.to_string_lossy().into_owned()),
             "KATALOG_UPLOAD_MAX_MB" => Some("1".into()),
             "KATALOG_COMPANION_MAX_MB" => Some("1".into()),
             "KATALOG_WRITE" => Some("1".into()),
@@ -62,7 +78,12 @@ impl Fixture {
         )
         .unwrap()
         .map(|o| Arc::new(fileops::Runtime::new(o)));
+        let excluded: Vec<std::path::PathBuf> = config.upload.iter().map(|u| u.dir.clone()).collect();
         let app = Arc::new(App {
+            restore: restore_upload::Runtime::default(),
+            events: uploads.as_ref().map(|r| r.hub.clone()).unwrap_or_default(),
+            printers: printer_service::Runtime::default(),
+            _instance_lock: None,
             fileops,
             fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),
             uploads,
@@ -71,7 +92,7 @@ impl Fixture {
             clock: time.clone(),
             data: Mutex::new(data),
             changes: Arc::new(tokio::sync::Mutex::new(())),
-            geometry: Arc::new(GeometryGate::default()),
+            geometry: Arc::new(GeometryGate::default().with_report_excluded(excluded)),
             downloads: Arc::new(tokio::sync::Semaphore::new(4)),
             export: crate::export::Runtime::new(),
             slicer: None,
@@ -315,7 +336,7 @@ async fn folder_commands_and_backups_before_removal() {
         200
     );
     assert_eq!(
-        f.invoke("remove_folder_from_catalog", json!({"folderId":a}))
+        f.invoke("remove_folder_from_catalog", json!({"folderId":a,"password":"test-password-long"}))
             .await
             .status(),
         200
@@ -465,7 +486,9 @@ async fn detached_worker_keeps_import_gate_until_completion() {
     let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
     let app = f.app.clone();
     let task = tokio::spawn(async move { router(app).oneshot(request).await.unwrap() });
-    for _ in 0..100 {
+    // Generous waits (10 s each, left as soon as the state is reached): in a fully parallel
+    // run of an unoptimised build the detached worker can take well over 200 ms.
+    for _ in 0..5000 {
         if f.app.uploads.as_ref().unwrap().active.available_permits() == 0 {
             break;
         }
@@ -486,7 +509,7 @@ async fn detached_worker_keeps_import_gate_until_completion() {
         .try_acquire_owned()
         .is_err());
     drop(conn);
-    for _ in 0..100 {
+    for _ in 0..5000 {
         if f.app.uploads.as_ref().unwrap().active.available_permits() == 1 {
             break;
         }
@@ -535,7 +558,7 @@ async fn db_only_removal_revoked_after_first_delete_rolls_back_all_rows() {
             ))
             .unwrap();
         let response = if folder_mode {
-            f.invoke("remove_folder_from_catalog", json!({"folderId":folder}))
+            f.invoke("remove_folder_from_catalog", json!({"folderId":folder,"password":"test-password-long"}))
                 .await
         } else {
             f.invoke("remove_files_from_catalog", json!({"fileIds":[a,b]}))
@@ -581,7 +604,7 @@ async fn large_folder_removal_is_possible_and_charges_one_window() {
         }
         folder.to_string()
     };
-    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder})).await;
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder,"password":"test-password-long"})).await;
     assert_eq!(r.status(), 200);
     assert_eq!(value(r).await["modelCount"], 500);
     let id = f.file("after.3mf");
@@ -590,6 +613,145 @@ async fn large_folder_removal_is_possible_and_charges_one_window() {
     assert_eq!(r.headers()["retry-after"], "600");
     f.time.0.store(700, Ordering::SeqCst);
     assert_eq!(f.invoke("remove_files_from_catalog", json!({"fileIds":[id]})).await.status(), 200);
+}
+/// A folder with `models` catalog entries (no files on disk needed for a catalog-only removal).
+fn catalog_folder(f: &Fixture, name: &str, models: usize) -> String {
+    std::fs::create_dir(f.dir.join("models").join(name)).unwrap();
+    let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+    c.execute("INSERT INTO folders(name,path) VALUES(?1,?2)", [name, f.dir.join("models").join(name).to_str().unwrap()]).unwrap();
+    let folder = c.last_insert_rowid();
+    for n in 0..models {
+        db::test_insert_minimal_file(&c, f.dir.join(format!("models/{name}/{n}.3mf")).to_str().unwrap(), Some(folder)).unwrap();
+    }
+    folder.to_string()
+}
+fn file_count(f: &Fixture) -> i64 {
+    f.app.writer.as_ref().unwrap().conn.lock().unwrap().query_row("SELECT count(*) FROM files", [], |r| r.get(0)).unwrap()
+}
+#[tokio::test]
+async fn folder_removal_with_entries_needs_the_password_and_changes_nothing_without_it() {
+    let f = Fixture::new(true).await;
+    let folder = catalog_folder(&f, "pw", 3);
+    // No password: refused before any budget, backup or change.
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(value(r).await["kind"], "password_required");
+    assert_eq!(file_count(&f), 3);
+    assert!(!f.dir.join("config/backups").exists());
+    // Wrong password: refused as a wrong password, still nothing changed.
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder,"password":"wrong"})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(value(r).await["kind"], "password_invalid");
+    assert_eq!(file_count(&f), 3);
+    // Not a string: invalid arguments.
+    assert_eq!(f.invoke("remove_folder_from_catalog", json!({"folderId":folder,"password":1})).await.status(), 400);
+    assert_eq!(file_count(&f), 3);
+    // The refusals booked nothing: the right password removes all three.
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder,"password":"test-password-long"})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(value(r).await["modelCount"], 3);
+    assert_eq!(file_count(&f), 0);
+}
+#[tokio::test]
+async fn folder_removal_of_an_empty_folder_needs_no_password_but_a_wrong_one_is_still_refused() {
+    let f = Fixture::new(true).await;
+    let empty = catalog_folder(&f, "empty", 0);
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":empty,"password":"wrong"})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(value(r).await["kind"], "password_invalid");
+    assert_eq!(f.invoke("remove_folder_from_catalog", json!({"folderId":empty})).await.status(), 200);
+}
+#[tokio::test]
+async fn folder_removal_password_check_busy_refuses_without_change() {
+    let _serial = crate::password::PASSWORD_TEST_LOCK.lock().await;
+    let f = Fixture::new(true).await;
+    let folder = catalog_folder(&f, "busy", 2);
+    let first = crate::password::hash_slot().await.unwrap();
+    let second = crate::password::hash_slot().await.unwrap();
+    // Both hash slots are taken: the check is busy (503), which is never read as "allowed".
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder,"password":"test-password-long"})).await;
+    assert_eq!(r.status(), 503);
+    assert_eq!(file_count(&f), 2);
+    drop((first, second));
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder,"password":"test-password-long"})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(file_count(&f), 0);
+}
+#[tokio::test]
+async fn folder_removal_above_the_daily_limit_is_refused_even_with_the_password() {
+    let f = Fixture::new(true).await;
+    *f.app.fileops_safety.lock().unwrap() = crate::fileops_safety::FileOpsSafety::new(5);
+    let folder = catalog_folder(&f, "big", 6);
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder,"password":"test-password-long"})).await;
+    assert_eq!(r.status(), 422);
+    assert_eq!(value(r).await["kind"], "limit_exceeded");
+    assert_eq!(file_count(&f), 6);
+    assert!(!f.dir.join("config/backups").exists());
+    // Within the limit the same folder size class is removed: exactly the count is booked.
+    let small = catalog_folder(&f, "small", 5);
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":small,"password":"test-password-long"})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(file_count(&f), 6);
+}
+fn all_file_ids(f: &Fixture) -> Vec<String> {
+    let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+    let mut stmt = c.prepare("SELECT id FROM files WHERE deleted_at IS NULL ORDER BY id").unwrap();
+    stmt.query_map([], |r| r.get::<_, i64>(0)).unwrap().map(|id| id.unwrap().to_string()).collect()
+}
+#[tokio::test]
+async fn catalog_removal_of_fifty_or_more_needs_the_password_and_changes_nothing_without_it() {
+    let f = Fixture::new(true).await;
+    catalog_folder(&f, "fifty", 50);
+    let ids = all_file_ids(&f);
+    assert_eq!(ids.len(), 50);
+    let r = f.invoke("remove_files_from_catalog", json!({"fileIds":ids})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(value(r).await["kind"], "password_required");
+    let r = f.invoke("remove_files_from_catalog", json!({"fileIds":ids,"password":"wrong"})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(value(r).await["kind"], "password_invalid");
+    assert_eq!(f.invoke("remove_files_from_catalog", json!({"fileIds":ids,"password":7})).await.status(), 400);
+    // Nothing changed, no backup, nothing booked.
+    assert_eq!(file_count(&f), 50);
+    assert!(!f.dir.join("config/backups").exists());
+    let r = f.invoke("remove_files_from_catalog", json!({"fileIds":ids,"password":"test-password-long"})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(file_count(&f), 0);
+}
+#[tokio::test]
+async fn catalog_removal_below_fifty_needs_no_password_but_a_wrong_one_is_refused() {
+    let f = Fixture::new(true).await;
+    catalog_folder(&f, "few", 49);
+    let ids = all_file_ids(&f);
+    let r = f.invoke("remove_files_from_catalog", json!({"fileIds":ids,"password":"wrong"})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(value(r).await["kind"], "password_invalid");
+    assert_eq!(file_count(&f), 49);
+    assert_eq!(f.invoke("remove_files_from_catalog", json!({"fileIds":ids})).await.status(), 200);
+    assert_eq!(file_count(&f), 0);
+}
+#[tokio::test]
+async fn splitting_a_removal_into_calls_of_49_runs_into_the_budget_not_past_the_password() {
+    let f = Fixture::new(true).await;
+    catalog_folder(&f, "split", 250);
+    let ids = all_file_ids(&f);
+    let mut removed = 0;
+    for chunk in ids.chunks(49) {
+        let r = f.invoke("remove_files_from_catalog", json!({"fileIds":chunk})).await;
+        if r.status() != 200 {
+            // The 200-per-10-minutes budget ends the splitting; the folder keeps the rest.
+            assert_eq!(r.status(), 429);
+            break;
+        }
+        removed += chunk.len();
+    }
+    assert_eq!(removed, 196);
+    assert_eq!(file_count(&f), 250 - 196);
+    // A call that removes 50 or more is never possible without the password, budget or not.
+    let rest = all_file_ids(&f);
+    let r = f.invoke("remove_files_from_catalog", json!({"fileIds":&rest[..50]})).await;
+    assert_eq!(r.status(), 403);
+    assert_eq!(rest.len(), 54);
 }
 #[tokio::test]
 async fn poisoned_fileops_mutex_requires_restart_also_for_6d() {
@@ -1054,6 +1216,120 @@ async fn folder_list_keeps_every_target_without_file_management() {
     }
     let list = value(f.invoke("list_folders", json!({})).await).await;
     assert_eq!(list[0]["moveTarget"], true, "{list}");
+}
+
+async fn folder_list_flags_a_folder_deleted_from_disk(file_ops: bool) {
+    let f = Fixture::new(file_ops).await;
+    f.file("m.3mf");
+    std::fs::create_dir_all(f.dir.join("models/here")).unwrap();
+    {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        for p in ["models/here", "models/gone"] {
+            c.execute("INSERT INTO folders(name,path) VALUES(?1,?2)", [p, f.dir.join(p).to_str().unwrap()]).unwrap();
+        }
+    }
+    let list = value(f.invoke("list_folders", json!({})).await).await;
+    let missing = |name: &str| list.as_array().unwrap().iter().find(|x| x["name"] == name).unwrap()["missing"].clone();
+    assert_eq!(missing("models/here"), false, "{list}");
+    assert_eq!(missing("models/gone"), true, "{list}");
+}
+
+#[tokio::test]
+async fn folder_list_flags_missing_folders_with_file_management() {
+    folder_list_flags_a_folder_deleted_from_disk(true).await;
+}
+
+#[tokio::test]
+async fn folder_list_flags_missing_folders_in_the_plain_read_path() {
+    folder_list_flags_a_folder_deleted_from_disk(false).await;
+}
+
+// ---- "Als STL speichern" als Download ----
+
+impl Fixture {
+    fn typed_file(&self, name: &str, file_type: &str, content: &[u8]) -> String {
+        let id = self.file(name);
+        std::fs::write(self.dir.join("models").join(name), content).unwrap();
+        self.app.writer.as_ref().unwrap().conn.lock().unwrap().execute("UPDATE files SET file_type=?1 WHERE id=?2", [file_type, &id]).unwrap();
+        id
+    }
+    async fn stl(&self, id: &str, query: &str) -> Response {
+        router(self.app.clone()).oneshot(self.request("GET", &format!("/api/files/{id}/stl{query}"), Body::empty())).await.unwrap()
+    }
+}
+
+#[tokio::test]
+async fn an_obj_is_downloaded_as_a_binary_stl_through_the_core_writer() {
+    let f = Fixture::new(true).await;
+    let id = f.typed_file("Wuerfel.obj", "obj", b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    let r = f.stl(&id, "").await;
+    assert_eq!(r.status(), 200);
+    let disposition = r.headers()["content-disposition"].to_str().unwrap().to_owned();
+    assert!(disposition.starts_with("attachment;") && disposition.contains("Wuerfel.stl"), "{disposition}");
+    let bytes = to_bytes(r.into_body(), 1024 * 1024).await.unwrap();
+    assert_eq!(bytes.len(), 84 + 50);
+    assert!(bytes.starts_with(b"Binary STL export"));
+    assert_eq!(u32::from_le_bytes(bytes[80..84].try_into().unwrap()), 1);
+}
+
+#[tokio::test]
+async fn an_obj_is_downloaded_as_ascii_stl_on_request_and_binary_stays_the_default() {
+    let f = Fixture::new(true).await;
+    let id = f.typed_file("Wuerfel.obj", "obj", b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    let r = f.stl(&id, "?format=ascii").await;
+    assert_eq!(r.status(), 200);
+    let disposition = r.headers()["content-disposition"].to_str().unwrap().to_owned();
+    assert!(disposition.contains("Wuerfel.stl"), "{disposition}");
+    let bytes = to_bytes(r.into_body(), 1024 * 1024).await.unwrap();
+    let text = std::str::from_utf8(&bytes).unwrap();
+    assert!(text.starts_with("solid ") && text.contains("facet normal") && text.trim_end().lines().last().unwrap().starts_with("endsolid"));
+    assert_eq!(text.matches("vertex ").count(), 3);
+    let explicit = to_bytes(f.stl(&id, "?format=binary").await.into_body(), 1024 * 1024).await.unwrap();
+    let default = to_bytes(f.stl(&id, "").await.into_body(), 1024 * 1024).await.unwrap();
+    assert_eq!(explicit, default);
+    assert_eq!(default.len(), 84 + 50);
+    let reversed = f.stl(&id, "?format=ascii&plate=1").await;
+    assert_eq!(reversed.status(), f.stl(&id, "?plate=1&format=ascii").await.status());
+}
+
+#[tokio::test]
+async fn stl_download_refuses_what_it_cannot_convert_with_codes() {
+    let f = Fixture::new(true).await;
+    let stl = f.typed_file("a.stl", "stl", b"solid x\nendsolid x\n");
+    let step = f.typed_file("a.stp", "stp", b"ISO-10303-21;");
+    let obj = f.typed_file("b.obj", "obj", b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    for (id, query, status, code) in [
+        (stl.as_str(), "", 422, "stlSourceIsStl"),
+        (step.as_str(), "", 422, "stlStepUnavailable"),
+        ("999999", "", 404, "fileNotFound"),
+        ("x1", "", 400, "reqInvalidIds"),
+        (obj.as_str(), "?plate=0", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?plate=x", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?other=1", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?plate=7", 422, "stlNothingToExport"),
+        (obj.as_str(), "?format=text", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?format=", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?format=ASCII", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?format=ascii&format=binary", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?format=ascii&plate=0", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?format=ascii&x=1", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?format=ascii&", 400, "reqInvalidArguments"),
+        (obj.as_str(), "?plate=7&format=ascii", 422, "stlNothingToExport"),
+    ] {
+        let r = f.stl(id, query).await;
+        assert_eq!(r.status(), status, "{id}{query}");
+        assert_eq!(value(r).await["message"], code, "{id}{query}");
+    }
+}
+
+#[tokio::test]
+async fn stl_download_needs_a_session_and_a_get() {
+    let f = Fixture::new(true).await;
+    let id = f.typed_file("c.obj", "obj", b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    let anonymous = Request::builder().method("GET").uri(format!("/api/files/{id}/stl")).header("host", "localhost:8080").body(Body::empty()).unwrap();
+    assert_eq!(router(f.app.clone()).oneshot(anonymous).await.unwrap().status(), 401);
+    let post = f.request("POST", &format!("/api/files/{id}/stl"), Body::empty());
+    assert_eq!(router(f.app.clone()).oneshot(post).await.unwrap().status(), 405);
 }
 
 // ---- Einzelne Begleitdateien: entfernen, wiederherstellen, Papierkorb leeren ----
@@ -1794,3 +2070,920 @@ async fn a_path_in_the_upload_name_never_leaves_the_extras_folder() {
     assert!(added.iter().all(|p| p.starts_with("Foo_extras/")), "{added:?}");
     assert_eq!(added.len(), 4, "{added:?}");
 }
+
+#[tokio::test]
+async fn maintenance_fileops_and_empty_trash_block_are_rejected() {
+    let f = Fixture::new(true).await;
+    let barrier = &f.app.geometry.barrier;
+    let window = barrier.enter_draining(std::time::Duration::from_secs(1)).await.unwrap();
+    for (command, args) in [
+        ("empty_trash_block", json!({"token":"unused"})),
+        ("rename_file", json!({"fileId":"1","name":"new.stl"})),
+    ] {
+        let response = f.invoke(command, args).await;
+        assert_eq!(response.status(), 503);
+        let bytes = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap()["message"], "maintenance");
+    }
+    assert_eq!(f.invoke("list_folders", json!({})).await.status(), 200);
+    let window = window.enter_exclusive(std::time::Duration::from_secs(1)).await.unwrap();
+    assert_eq!(f.invoke("list_folders", json!({})).await.status(), 503);
+    window.release();
+}
+
+mod source_dirs_http_tests {
+    include!("source_dirs_http_tests.rs");
+}
+
+/// A folder `big` with a subfolder `sub`: `top` models in `big`, `deep` in `big/sub`, real files on disk.
+fn folder_with_models(f: &Fixture, top: usize, deep: usize) -> String {
+    std::fs::create_dir_all(f.dir.join("models/big/sub")).unwrap();
+    let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+    c.execute("INSERT INTO folders(name,path) VALUES('big',?1)", [f.dir.join("models/big").to_str().unwrap()]).unwrap();
+    let big = c.last_insert_rowid();
+    c.execute("INSERT INTO folders(name,path,parent_id) VALUES('sub',?1,?2)", rusqlite::params![f.dir.join("models/big/sub").to_str().unwrap(), big]).unwrap();
+    let sub = c.last_insert_rowid();
+    for (count, dir, folder) in [(top, "big", big), (deep, "big/sub", sub)] {
+        for n in 0..count {
+            let path = f.dir.join(format!("models/{dir}/{n}.3mf"));
+            std::fs::write(&path, format!("model {dir} {n}")).unwrap();
+            db::test_insert_minimal_file(&c, path.to_str().unwrap(), Some(folder)).unwrap();
+        }
+    }
+    big.to_string()
+}
+
+#[tokio::test]
+async fn a_folder_goes_to_the_trash_in_throttled_blocks_and_comes_back_model_by_model() {
+    let f = Fixture::new(true).await;
+    let folder = folder_with_models(&f, 300, 150);
+    let summary = value(f.invoke("folder_trash_summary", json!({"folderId":folder})).await).await;
+    assert_eq!((summary["modelCount"].clone(), summary["subfolderCount"].clone(), summary["isCatalogRootOrAncestor"].clone()), (json!(450), json!(1), json!(false)));
+    let start = value(f.invoke("trash_folder_start", json!({"folderId":folder})).await).await;
+    assert_eq!(start["remaining"], 450);
+    let token = start["token"].clone();
+    // The first block runs at once, the next one has to wait the short pause with a real Retry-After.
+    let first = value(f.invoke("trash_folder_block", json!({"token":token})).await).await;
+    assert_eq!((first["results"].as_array().unwrap().len(), first["remaining"].clone()), (200, json!(250)));
+    assert!(first.get("removedFolderCount").is_none());
+    let early = f.invoke("trash_folder_block", json!({"token":token})).await;
+    assert_eq!(early.status(), 429);
+    assert!(early.headers().contains_key("retry-after"));
+    f.time.0.store(103, Ordering::SeqCst);
+    let second = value(f.invoke("trash_folder_block", json!({"token":token})).await).await;
+    assert_eq!(second["remaining"], 50);
+    f.time.0.store(106, Ordering::SeqCst);
+    let last = value(f.invoke("trash_folder_block", json!({"token":token})).await).await;
+    assert_eq!((last["remaining"].clone(), last["removedFolderCount"].clone()), (json!(0), json!(2)));
+    // A finished token is gone.
+    f.time.0.store(109, Ordering::SeqCst);
+    assert_eq!(f.invoke("trash_folder_block", json!({"token":token})).await.status(), 404);
+    {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        let n = |sql: &str| c.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+        assert_eq!(n("SELECT COUNT(*) FROM files WHERE deleted_at IS NOT NULL"), 450);
+        assert_eq!(n("SELECT COUNT(*) FROM folder_trash_origin"), 450);
+        assert_eq!(n("SELECT COUNT(*) FROM folders"), 0);
+    }
+    assert!(f.dir.join("config/backups").exists());
+    // The branch is gone from the disk; restoring one model rebuilds its folders and clears its marker.
+    std::fs::remove_dir_all(f.dir.join("models/big")).unwrap();
+    let id: i64 = f.app.writer.as_ref().unwrap().conn.lock().unwrap()
+        .query_row("SELECT id FROM files WHERE name='7.3mf' AND path LIKE '%/big/sub/%'", [], |r| r.get(0)).unwrap();
+    assert_eq!(f.invoke("restore_file", json!({"fileId":id.to_string()})).await.status(), 200);
+    assert!(f.dir.join("models/big/sub/7.3mf").exists());
+    let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+    assert_eq!(c.query_row("SELECT COUNT(*) FROM folders", [], |r| r.get::<_, i64>(0)).unwrap(), 2);
+    assert_eq!(c.query_row("SELECT COUNT(*) FROM folder_trash_origin", [], |r| r.get::<_, i64>(0)).unwrap(), 449);
+}
+
+#[tokio::test]
+async fn folder_trash_tokens_are_session_bound_and_the_catalog_base_is_refused() {
+    let f = Fixture::new(true).await;
+    let folder = folder_with_models(&f, 2, 1);
+    let token = value(f.invoke("trash_folder_start", json!({"folderId":folder})).await).await["token"].clone();
+    let other = { let mut d = f.app.data.lock().unwrap(); new_session(&mut d, "test", 100).unwrap() };
+    let mut req = f.request("POST", "/api/invoke/trash_folder_block", Body::from(json!({"token":token}).to_string()));
+    req.headers_mut().insert("content-type", "application/json".parse().unwrap());
+    req.headers_mut().insert("cookie", format!("katalog_session={}", other.token).parse().unwrap());
+    req.headers_mut().insert("x-csrf-token", other.csrf.parse().unwrap());
+    assert_eq!(router(f.app.clone()).oneshot(req).await.unwrap().status(), 404);
+    assert_eq!(f.invoke("trash_folder_block", json!({"token":"nope"})).await.status(), 404);
+    // Nothing moved so far; with the folder set as catalog base, the start is refused with a 409.
+    f.app.writer.as_ref().unwrap().conn.lock().unwrap()
+        .execute("INSERT INTO app_settings(key,value) VALUES('catalog_base_dir',?1)", [f.dir.join("models/big").to_str().unwrap()]).unwrap();
+    let refused = f.invoke("trash_folder_start", json!({"folderId":folder})).await;
+    assert_eq!(refused.status(), 409);
+    let summary = value(f.invoke("folder_trash_summary", json!({"folderId":folder})).await).await;
+    assert_eq!(summary["isCatalogRootOrAncestor"], true);
+    assert_eq!(f.app.writer.as_ref().unwrap().conn.lock().unwrap()
+        .query_row("SELECT COUNT(*) FROM files WHERE deleted_at IS NOT NULL", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+}
+
+#[tokio::test]
+async fn folder_trash_commands_have_strict_arguments_and_an_unknown_folder_is_a_404() {
+    let f = Fixture::new(true).await;
+    assert_eq!(f.invoke("trash_folder_start", json!({"folderId":"999"})).await.status(), 404);
+    assert_eq!(f.invoke("trash_folder_start", json!({"folderId":"1","extra":1})).await.status(), 422);
+    assert_eq!(f.invoke("trash_folder_start", json!({"folderId":"x"})).await.status(), 400);
+    assert_eq!(f.invoke("folder_trash_summary", json!({"folderId":"999"})).await.status(), 404);
+    assert_eq!(f.invoke("folder_trash_summary", json!({"folderId":"1","x":1})).await.status(), 422);
+    let off = Fixture::new(false).await;
+    assert_eq!(off.invoke("trash_folder_start", json!({"folderId":"1"})).await.status(), 404);
+}
+
+/// W2 (Forgejo #39): the disk comparison as plan, start and blocks, and the date prefix.
+mod disksync_tests {
+    use super::*;
+    use std::io::Write as _;
+    use std::time::Duration;
+    use std::os::unix::fs::symlink;
+
+    const OBJ: &[u8] = b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
+    const STL: &[u8] = b"solid t\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\nendloop\nendfacet\nendsolid t\n";
+    fn three_mf() -> Vec<u8> {
+        let xml = r#"<model unit="millimeter"><resources><object id="1"><mesh><vertices><vertex x="0" y="0" z="0"/><vertex x="5" y="0" z="0"/><vertex x="0" y="5" z="0"/></vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object></resources><build><item objectid="1"/></build></model>"#;
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        zip.start_file("3D/3dmodel.model", zip::write::SimpleFileOptions::default()).unwrap();
+        zip.write_all(xml.as_bytes()).unwrap();
+        zip.finish().unwrap().into_inner()
+    }
+    impl Fixture {
+        /// A catalog row for a file that is not on the disk.
+        fn gone(&self, name: &str) -> String {
+            let path = self.dir.join("models").join(name);
+            db::test_insert_minimal_file(&self.app.writer.as_ref().unwrap().conn.lock().unwrap(), path.to_str().unwrap(), None)
+                .unwrap()
+                .to_string()
+        }
+        fn put(&self, name: &str, bytes: &[u8]) {
+            let path = self.dir.join("models").join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, bytes).unwrap();
+        }
+        fn session_two(&self) -> Session {
+            let mut d = self.app.data.lock().unwrap();
+            new_session(&mut d, "test", 100).unwrap()
+        }
+        async fn invoke_as(&self, session: &Session, cmd: &str, args: Value) -> Response {
+            let mut req = self.request("POST", &format!("/api/invoke/{cmd}"), Body::from(args.to_string()));
+            req.headers_mut().insert("content-type", "application/json".parse().unwrap());
+            req.headers_mut().insert("cookie", format!("katalog_session={}", session.token).parse().unwrap());
+            req.headers_mut().insert("x-csrf-token", session.csrf.parse().unwrap());
+            router(self.app.clone()).oneshot(req).await.unwrap()
+        }
+        async fn invoke_raw(&self, cmd: &str, body: String) -> Response {
+            let mut req = self.request("POST", &format!("/api/invoke/{cmd}"), Body::from(body));
+            req.headers_mut().insert("content-type", "application/json".parse().unwrap());
+            router(self.app.clone()).oneshot(req).await.unwrap()
+        }
+        /// Preview, start (confirmed) and the token.
+        async fn plan(&self, selection: Value) -> String {
+            let r = self.invoke("disk_sync_preview", selection).await;
+            assert_eq!(r.status(), 200);
+            let token = value(r).await["token"].as_str().unwrap().to_owned();
+            assert!(!token.is_empty());
+            token
+        }
+        async fn started(&self, selection: Value) -> String {
+            let token = self.plan(selection).await;
+            let r = self.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await;
+            assert_eq!(r.status(), 200);
+            token
+        }
+        async fn block(&self, token: &str, seq: u64) -> Response {
+            self.invoke("disk_sync_apply_block", json!({"token":token,"seq":seq})).await
+        }
+        fn state(&self, id: &str) -> (Option<String>, Option<String>) {
+            let conn = self.app.writer.as_ref().unwrap().conn.lock().unwrap();
+            conn.query_row("SELECT deleted_at, trash_path FROM files WHERE id=?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
+        }
+    }
+    fn reasons(v: &Value) -> Vec<String> {
+        v["results"].as_array().unwrap().iter().map(|r| r["reason"].as_str().unwrap_or("ok").to_owned()).collect()
+    }
+    fn backups(f: &Fixture) -> bool {
+        f.dir.join("config/backups").exists()
+    }
+    async fn kind(r: Response, status: u16) -> Value {
+        assert_eq!(r.status(), status);
+        value(r).await
+    }
+
+    #[tokio::test]
+    async fn a_removal_goes_to_the_trash_state_without_touching_a_file() {
+        let f = Fixture::new(true).await;
+        let keep = f.file("keep.3mf");
+        let id = f.gone("gone.3mf");
+        let token = f.started(json!({"missingModels":[id]})).await;
+        let answer = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!(reasons(&answer), ["ok"]);
+        assert_eq!(answer["results"][0], json!({"kind":"removeModel","key":id,"ok":true}));
+        assert_eq!((answer["done"].clone(), answer["remaining"].clone(), answer["stopped"].clone()), (json!(1), json!(0), Value::Null));
+        assert_eq!(answer["counts"], json!({"imported":0,"removedModels":1,"removedCompanions":0,"skipped":0}));
+        let (deleted_at, trash_path) = f.state(&id);
+        assert!(deleted_at.is_some() && trash_path.is_none());
+        assert!(f.state(&keep).0.is_none());
+        assert!(trash_names(&f).is_empty());
+        assert_eq!(f.app.fileops.as_ref().unwrap().pending_entries_for_test(), 0);
+        assert!(backups(&f), "a backup exists before the first removal");
+    }
+
+    #[tokio::test]
+    async fn a_block_without_a_successful_start_touches_nothing() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let id = f.gone("gone.3mf");
+        // Directly after the preview.
+        let token = f.plan(json!({"missingModels":[id]})).await;
+        let r = f.block(&token, 0).await;
+        assert_eq!(kind(r, 409).await["kind"], "not_started");
+        assert!(f.state(&id).0.is_none() && !backups(&f));
+        // The refused block did not cost the plan its sequence number or anything the budget holds.
+        assert_eq!(f.app.fileops_safety.lock().unwrap().reserve_disk_sync(2000, 100), Ok(()));
+        *f.app.fileops_safety.lock().unwrap() = crate::fileops_safety::FileOpsSafety::new(2000);
+        // Start without the confirmation: 422, then the block is still refused.
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":false})).await;
+        assert_eq!(kind(r, 422).await["kind"], "confirmation_required");
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token})).await;
+        assert_eq!(kind(r, 422).await["kind"], "confirmation_required");
+        assert_eq!(kind(f.block(&token, 0).await, 409).await["kind"], "not_started");
+        assert!(f.state(&id).0.is_none() && !backups(&f));
+        // The backup cannot be made: 503 before any change, and the block is still refused.
+        std::fs::write(f.dir.join("config/backups"), b"blocked").unwrap();
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await;
+        assert_eq!(kind(r, 503).await["kind"], "backup_failed");
+        assert_eq!(kind(f.block(&token, 0).await, 409).await["kind"], "not_started");
+        assert!(f.state(&id).0.is_none());
+        // Once it can be made, the same plan starts and the same block runs.
+        std::fs::remove_file(f.dir.join("config/backups")).unwrap();
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await;
+        assert_eq!(kind(r, 200).await, json!({"total":1,"remaining":1}));
+        assert_eq!(reasons(&kind(f.block(&token, 0).await, 200).await), ["ok"]);
+        assert!(f.state(&id).0.is_some());
+    }
+
+    #[tokio::test]
+    async fn a_plan_above_the_daily_limit_is_refused_whole_and_its_blocks_never_run() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        *f.app.fileops_safety.lock().unwrap() = crate::fileops_safety::FileOpsSafety::new(10);
+        let ids: Vec<String> = (0..100).map(|n| f.gone(&format!("gone{n}.3mf"))).collect();
+        let token = f.plan(json!({"missingModels":ids})).await;
+        // 100 removals need the password (from 50 on); with it the daily limit refuses the whole plan.
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true,"password":"test-password-long"})).await;
+        assert_eq!(kind(r, 422).await["kind"], "limit_exceeded");
+        assert!(!backups(&f), "a refusal makes no backup");
+        assert_eq!(kind(f.block(&token, 0).await, 409).await["kind"], "not_started");
+        assert!(ids.iter().all(|id| f.state(id).0.is_none()));
+        // Nothing was booked: a plan of exactly ten is allowed, the next single removal waits.
+        let ten = f.started(json!({"missingModels":&ids[..10]})).await;
+        let done = kind(f.block(&ten, 0).await, 200).await;
+        assert_eq!(done["counts"]["removedModels"], 10);
+        let one = f.plan(json!({"missingModels":[ids[10]]})).await;
+        let r = f.invoke("disk_sync_apply_start", json!({"token":one,"confirmRemoval":true})).await;
+        assert_eq!(r.status(), 429);
+        assert!(r.headers().contains_key("retry-after"));
+        assert_eq!(kind(f.block(&one, 0).await, 409).await["kind"], "not_started");
+        assert!(f.state(&ids[10]).0.is_none());
+        assert_eq!(ids.iter().filter(|id| f.state(id).0.is_some()).count(), 10);
+    }
+
+    #[tokio::test]
+    async fn imports_alone_book_no_budget() {
+        let f = Fixture::new(true).await;
+        *f.app.fileops_safety.lock().unwrap() = crate::fileops_safety::FileOpsSafety::new(1);
+        f.put("a.obj", OBJ);
+        let token = f.started(json!({"newFiles":[{"root":0,"relativePath":"a.obj"}]})).await;
+        let answer = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!(answer["counts"]["imported"], 1);
+        // Apply results say "import" (spec 2.5); "new" belongs to the preview's skipped list.
+        let result = &answer["results"][0];
+        assert_eq!((&result["kind"], &result["key"], &result["ok"]), (&json!("import"), &json!("0:a.obj"), &json!(true)));
+        let id = result["fileId"].as_str().unwrap();
+        assert!(!id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()), "{result}");
+        assert_eq!(result.as_object().unwrap().len(), 4, "{result}");
+        assert_eq!(f.app.fileops_safety.lock().unwrap().reserve_disk_sync(1, 100), Ok(()));
+    }
+
+    #[tokio::test]
+    async fn an_empty_preview_still_replaces_the_started_plan_of_the_session() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let id = f.gone("gone.3mf");
+        let old = f.started(json!({"missingModels":[id]})).await;
+        // Everything is skipped (outside the roots): no rows, no token, but the old plan is gone.
+        let answer = value(f.invoke("disk_sync_preview", json!({"newFiles":[{"root":9,"relativePath":"x.obj"}]})).await).await;
+        assert_eq!(answer["token"], "");
+        assert_eq!(answer["skipped"][0]["reason"], "outside");
+        let r = f.block(&old, 0).await;
+        assert_eq!(kind(r, 404).await["kind"], "snapshot_not_found");
+        assert!(f.state(&id).0.is_none(), "the old plan must not have run");
+    }
+
+    #[tokio::test]
+    async fn report_preview_and_apply_use_the_same_root_numbers_next_to_a_shallower_trash_folder() {
+        let f = Fixture::with_layout(true, true).await;
+        // The desktop trash folder (config/trash) is in `config.roots` and sorts before both roots.
+        assert_eq!(f.app.config.roots.len(), 3);
+        assert_eq!(f.app.config.file_roots.len(), 2);
+        let (a, b) = (f.dir.join("models/x/a"), f.dir.join("models/x/b"));
+        std::fs::write(a.join("only-in-a.obj"), OBJ).unwrap();
+        std::fs::write(b.join("only-in-b.obj"), OBJ).unwrap();
+        std::fs::write(a.join("uploads/up.obj"), OBJ).unwrap();
+        std::fs::write(f.dir.join("config/trash/in-trash.obj"), OBJ).unwrap();
+        let report = value(f.invoke("disk_sync_report", json!({})).await).await;
+        let mut found: Vec<(u64, String)> = report["newFiles"].as_array().unwrap().iter()
+            .map(|n| (n["root"].as_u64().unwrap(), n["relativePath"].as_str().unwrap().to_owned())).collect();
+        found.sort();
+        // Only the file roots, numbered as the preview numbers them; no trash, no upload folder.
+        assert_eq!(report["roots"].as_array().unwrap().len(), 2, "{report}");
+        assert_eq!(found.len(), 2, "{found:?}");
+        let pick = |name: &str| found.iter().find(|(_, p)| p == name).cloned().unwrap();
+        let (root_b, rel_b) = pick("only-in-b.obj");
+        let (root_a, rel_a) = pick("only-in-a.obj");
+        let ordered = katalog_core::disk_report::ordered_roots(&f.app.config.file_roots);
+        assert_eq!(ordered[root_a as usize].file_name().unwrap(), "a");
+        assert_eq!(ordered[root_b as usize].file_name().unwrap(), "b");
+        let token = f.started(json!({"newFiles":[{"root":root_b,"relativePath":rel_b},{"root":root_a,"relativePath":rel_a}]})).await;
+        let answer = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!(reasons(&answer), ["ok", "ok"], "{answer}");
+        assert_eq!(answer["counts"]["imported"], 2);
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        let mut paths: Vec<String> = conn.prepare("SELECT path FROM files").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+        paths.sort();
+        let norm = |p: std::path::PathBuf| p.canonicalize().unwrap().to_string_lossy().into_owned();
+        assert_eq!(paths.len(), 2, "{paths:?}");
+        assert!(paths.iter().any(|p| p.ends_with("/models/x/a/only-in-a.obj")), "{paths:?} {}", norm(a));
+        assert!(paths.iter().any(|p| p.ends_with("/models/x/b/only-in-b.obj")), "{paths:?} {}", norm(b));
+    }
+
+    #[tokio::test]
+    async fn a_file_that_is_back_is_skipped_and_stays_where_it_is() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let id = f.gone("back.3mf");
+        let token = f.started(json!({"missingModels":[id]})).await;
+        f.put("back.3mf", b"here again");
+        let answer = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!(reasons(&answer), ["exists_again"]);
+        assert_eq!(answer["counts"]["skipped"], 1);
+        assert!(f.state(&id).0.is_none());
+        assert_eq!(std::fs::read(f.dir.join("models/back.3mf")).unwrap(), b"here again");
+        assert!(trash_names(&f).is_empty());
+    }
+
+    #[tokio::test]
+    async fn plans_expire_and_belong_to_their_session() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let id = f.gone("gone.3mf");
+        let token = f.plan(json!({"missingModels":[id]})).await;
+        let other = f.session_two();
+        let r = f.invoke_as(&other, "disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await;
+        assert_eq!(kind(r, 404).await["kind"], "snapshot_not_found");
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await;
+        assert_eq!(r.status(), 200);
+        let r = f.invoke_as(&other, "disk_sync_apply_block", json!({"token":token,"seq":0})).await;
+        assert_eq!(kind(r, 404).await["kind"], "snapshot_not_found");
+        assert!(f.state(&id).0.is_none());
+        f.time.0.store(100 + 3600, Ordering::SeqCst);
+        assert_eq!(kind(f.block(&token, 0).await, 404).await["kind"], "snapshot_not_found");
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await;
+        assert_eq!(kind(r, 404).await["kind"], "snapshot_not_found");
+        assert!(f.state(&id).0.is_none());
+        // A second preview replaces the first one of the session.
+        let first = f.plan(json!({"missingModels":[id]})).await;
+        let second = f.plan(json!({"missingModels":[id]})).await;
+        assert_ne!(first, second);
+        let r = f.invoke("disk_sync_apply_start", json!({"token":first,"confirmRemoval":true})).await;
+        assert_eq!(r.status(), 404);
+    }
+
+    #[tokio::test]
+    async fn the_plan_count_is_limited() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let id = f.gone("gone.3mf");
+        {
+            let mut state = f.app.fileops.as_ref().unwrap().state.lock().unwrap();
+            fileops::disksync::insert_other_plans(&mut state, 100, 100);
+        }
+        let r = f.invoke("disk_sync_preview", json!({"missingModels":[id]})).await;
+        assert_eq!(kind(r, 503).await["kind"], "snapshot_capacity");
+        // Expired plans make room.
+        f.time.0.store(100 + 3600, Ordering::SeqCst);
+        assert_eq!(f.invoke("disk_sync_preview", json!({"missingModels":[id]})).await.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn a_repeated_start_or_block_does_nothing_twice() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        *f.app.fileops_safety.lock().unwrap() = crate::fileops_safety::FileOpsSafety::new(20);
+        let ids: Vec<String> = (0..12).map(|n| f.gone(&format!("gone{n}.3mf"))).collect();
+        let token = f.started(json!({"missingModels":&ids[..10]})).await;
+        let again = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await;
+        assert_eq!(kind(again, 409).await["kind"], "snapshot_mismatch");
+        // Booked once: another plan of ten (another session, a session has one plan) still fits into the day of twenty.
+        let other = f.session_two();
+        let r = f.invoke_as(&other, "disk_sync_preview", json!({"missingModels":&ids[10..]})).await;
+        let more = value(r).await["token"].as_str().unwrap().to_owned();
+        let r = f.invoke_as(&other, "disk_sync_apply_start", json!({"token":more,"confirmRemoval":true})).await;
+        assert_eq!(r.status(), 200);
+        let first = kind(f.block(&token, 0).await, 200).await;
+        let (before, entries) = (count(&f, "files"), f.app.fileops.as_ref().unwrap().pending_entries_for_test());
+        let again = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!(first, again);
+        assert_eq!((count(&f, "files"), f.app.fileops.as_ref().unwrap().pending_entries_for_test()), (before, entries));
+        // Wrong sequence numbers and a finished plan.
+        assert_eq!(kind(f.block(&token, 1).await, 409).await["kind"], "snapshot_mismatch");
+        assert_eq!(kind(f.block(&token, 7).await, 409).await["kind"], "snapshot_mismatch");
+        let r = f.invoke_as(&other, "disk_sync_apply_block", json!({"token":more,"seq":0})).await;
+        assert_eq!(kind(r, 200).await["counts"]["removedModels"], 2);
+        let r = f.invoke_as(&other, "disk_sync_apply_block", json!({"token":more,"seq":1})).await;
+        assert_eq!(kind(r, 409).await["kind"], "snapshot_mismatch");
+        assert_eq!(first["counts"]["removedModels"], 10);
+    }
+
+    #[tokio::test]
+    async fn blocks_are_ten_rows_and_the_audit_names_the_ids_never_paths() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let ids: Vec<String> = (0..12).map(|n| f.gone(&format!("gone{n}.3mf"))).collect();
+        let token = f.started(json!({"missingModels":ids})).await;
+        let progress = {
+            let (r, p) = f.invoke_audited("disk_sync_apply_block", json!({"token":token,"seq":0})).await;
+            let answer = kind(r, 200).await;
+            assert_eq!((answer["done"].clone(), answer["remaining"].clone()), (json!(10), json!(2)));
+            p
+        };
+        assert_eq!(progress.file_ids.lock().unwrap().len(), 10);
+        assert_eq!(progress.completed_items.load(Ordering::Relaxed), 10);
+        let answer = kind(f.block(&token, 1).await, 200).await;
+        assert_eq!((answer["done"].clone(), answer["remaining"].clone()), (json!(12), json!(0)));
+        assert!(!answer.to_string().contains(f.dir.to_str().unwrap()));
+    }
+
+    #[tokio::test]
+    async fn a_session_that_ends_stops_the_block_after_the_current_row() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let ids: Vec<String> = (0..3).map(|n| f.gone(&format!("gone{n}.3mf"))).collect();
+        let token = f.started(json!({"missingModels":ids})).await;
+        let (weak, session) = (Arc::downgrade(&f.app), f.session.token.clone());
+        fileops::disksync::row_hooks().lock().unwrap().insert(
+            f.session.token.clone(),
+            Arc::new(move |index| {
+                if index == 0 {
+                    revoke_session(&mut weak.upgrade().unwrap().data.lock().unwrap(), &session);
+                }
+            }),
+        );
+        let answer = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!(answer["stopped"], "session");
+        assert_eq!((answer["done"].clone(), answer["remaining"].clone()), (json!(1), json!(2)));
+        assert_eq!(ids.iter().filter(|id| f.state(id).0.is_some()).count(), 1);
+        // The rest stays untouched and the session is gone.
+        assert_eq!(f.block(&token, 1).await.status(), 401);
+        assert_eq!(ids.iter().filter(|id| f.state(id).0.is_some()).count(), 1);
+        fileops::disksync::row_hooks().lock().unwrap().remove(&f.session.token);
+    }
+
+    #[tokio::test]
+    async fn maintenance_stops_a_running_block_and_the_rest_continues_afterwards() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let ids: Vec<String> = (0..3).map(|n| f.gone(&format!("gone{n}.3mf"))).collect();
+        let token = f.started(json!({"missingModels":ids})).await;
+        let window: Arc<Mutex<Option<crate::barrier::MaintenanceWindow>>> = Arc::default();
+        let barrier = f.app.geometry.barrier.clone();
+        let (handle, held) = (tokio::runtime::Handle::current(), window.clone());
+        fileops::disksync::row_hooks().lock().unwrap().insert(
+            f.session.token.clone(),
+            Arc::new(move |index| {
+                if index != 0 {
+                    return;
+                }
+                let (b, held) = (barrier.clone(), held.clone());
+                handle.spawn(async move {
+                    let w = b.enter_draining(Duration::from_secs(20)).await.unwrap();
+                    *held.lock().unwrap() = Some(w);
+                });
+                for _ in 0..400 {
+                    if barrier.snapshot().state == crate::barrier::State::Draining {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            }),
+        );
+        let answer = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!(answer["stopped"], "maintenance");
+        assert_eq!(answer["results"].as_array().unwrap().len(), 1);
+        fileops::disksync::row_hooks().lock().unwrap().remove(&f.session.token);
+        // The new block is refused while the window is open, and the barrier counts no writer.
+        for _ in 0..400 {
+            if window.lock().unwrap().is_some() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert_eq!(f.app.geometry.barrier.snapshot().writers, 0);
+        let r = f.block(&token, 1).await;
+        assert_eq!(kind(r, 503).await["message"], "maintenance");
+        window.lock().unwrap().take().unwrap().release();
+        let rest = kind(f.block(&token, 1).await, 200).await;
+        assert_eq!(rest["stopped"], Value::Null);
+        assert_eq!((rest["done"].clone(), rest["remaining"].clone()), (json!(3), json!(0)));
+        assert!(ids.iter().all(|id| f.state(id).0.is_some()));
+    }
+
+    #[tokio::test]
+    async fn every_command_is_refused_in_maintenance_and_with_a_blocked_journal() {
+        let f = Fixture::new(true).await;
+        let commands = [
+            ("disk_sync_preview", json!({"missingModels":["1"]})),
+            ("disk_sync_apply_start", json!({"token":"x","confirmRemoval":true})),
+            ("disk_sync_apply_block", json!({"token":"x","seq":0})),
+            ("preview_date_rename", json!({"fileIds":["1"],"dateSource":"modified"})),
+            ("apply_date_rename", json!({"items":[{"id":"1","newName":"a"}]})),
+        ];
+        let window = f.app.geometry.barrier.enter_draining(Duration::from_secs(1)).await.unwrap();
+        for (command, args) in &commands {
+            let r = f.invoke(command, args.clone()).await;
+            assert_eq!(kind(r, 503).await["message"], "maintenance", "{command}");
+        }
+        let window = window.enter_exclusive(Duration::from_secs(1)).await.unwrap();
+        for (command, args) in &commands {
+            let r = f.invoke(command, args.clone()).await;
+            assert_eq!(kind(r, 503).await["message"], "maintenance", "{command}");
+        }
+        window.release();
+        f.app.fileops.as_ref().unwrap().block_for_test();
+        for (command, args) in &commands {
+            let r = f.invoke(command, args.clone()).await;
+            assert_eq!(kind(r, 503).await["kind"], "restart_required", "{command}");
+        }
+    }
+
+    #[tokio::test]
+    async fn without_file_management_the_commands_do_not_exist_and_checks_come_first_otherwise() {
+        let off = Fixture::new(false).await;
+        for command in ["disk_sync_preview", "disk_sync_apply_start", "disk_sync_apply_block", "preview_date_rename", "apply_date_rename"] {
+            let r = off.invoke(command, json!({})).await;
+            assert_eq!(kind(r, 404).await["kind"], "fileops_disabled", "{command}");
+        }
+        let f = Fixture::new(true).await;
+        for (command, args, status) in [
+            ("disk_sync_preview", json!({"missingModels":["1"],"extra":1}), 422),
+            ("disk_sync_preview", json!({}), 422),
+            ("disk_sync_preview", json!({"missingModels":["0"]}), 400),
+            ("disk_sync_preview", json!({"newFiles":[{"root":0}]}), 400),
+            ("disk_sync_apply_start", json!({"token":"x","confirmRemoval":"yes"}), 400),
+            ("disk_sync_apply_block", json!({"token":"x","seq":-1}), 400),
+            ("disk_sync_apply_block", json!({"token":"x","seq":0,"x":1}), 422),
+            ("preview_date_rename", json!({"fileIds":["1"],"dateSource":"today"}), 400),
+            ("apply_date_rename", json!({"items":[]}), 422),
+        ] {
+            assert_eq!(f.invoke(command, args).await.status(), status, "{command}");
+        }
+        let many: Vec<String> = (1..=1501).map(|n| n.to_string()).collect();
+        let r = f.invoke("disk_sync_preview", json!({"missingModels":many})).await;
+        assert_eq!(kind(r, 422).await["kind"], "limit_exceeded");
+    }
+
+    #[tokio::test]
+    async fn an_import_running_makes_every_command_wait_and_keeps_the_plan() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let id = f.gone("gone.3mf");
+        let token = f.plan(json!({"missingModels":[id]})).await;
+        let permit = f.app.uploads.as_ref().unwrap().active.clone().try_acquire_owned().unwrap();
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await;
+        assert_eq!(r.status(), 503);
+        assert!(r.headers().contains_key("retry-after"));
+        drop(permit);
+        assert_eq!(f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn new_files_are_imported_with_their_folders_and_checked_again_per_row() {
+        let f = Fixture::new(true).await;
+        f.put("new/a.obj", OBJ);
+        f.put("b.stl", STL);
+        f.put("deep/er/c.3mf", &three_mf());
+        let selection = json!({"newFiles":[
+            {"root":0,"relativePath":"new/a.obj"},{"root":0,"relativePath":"b.stl"},{"root":0,"relativePath":"deep/er/c.3mf"}]});
+        let token = f.plan(selection.clone()).await;
+        // Not started: nothing happens, with no confirmation needed once it is.
+        assert_eq!(kind(f.block(&token, 0).await, 409).await["kind"], "not_started");
+        assert_eq!(count(&f, "files"), 0);
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token})).await;
+        assert_eq!(kind(r, 200).await["total"], 3);
+        let answer = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!(reasons(&answer), ["ok", "ok", "ok"], "{answer}");
+        assert_eq!(answer["counts"]["imported"], 3);
+        assert_eq!(count(&f, "files"), 3);
+        let folders: Vec<String> = {
+            let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+            let mut stmt = conn.prepare("SELECT name FROM folders ORDER BY name").unwrap();
+            let names = stmt.query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+            names
+        };
+        assert!(["deep", "er", "new"].iter().all(|n| folders.iter().any(|f| f == n)), "{folders:?}");
+        // The files themselves are untouched.
+        assert_eq!(std::fs::read(f.dir.join("models/b.stl")).unwrap(), STL);
+        // Offered again, they are in the catalog.
+        let again = value(f.invoke("disk_sync_preview", selection).await).await;
+        assert_eq!(again["token"], "");
+        assert_eq!(again["skipped"].as_array().unwrap().len(), 3);
+        assert!(again["skipped"].as_array().unwrap().iter().all(|s| s["reason"] == "already_in_catalog"));
+    }
+
+    #[tokio::test]
+    async fn a_file_that_changed_or_vanished_after_the_preview_is_not_imported() {
+        let f = Fixture::new(true).await;
+        f.put("changed.obj", OBJ);
+        f.put("gone.obj", OBJ);
+        f.put("swapped.obj", OBJ);
+        let token = f.started(json!({"newFiles":[
+            {"root":0,"relativePath":"changed.obj"},{"root":0,"relativePath":"gone.obj"},{"root":0,"relativePath":"swapped.obj"}]})).await;
+        f.put("changed.obj", b"v 0 0 0\nv 2 0 0\nv 0 2 0\nf 1 2 3\n# longer than before\n");
+        std::fs::remove_file(f.dir.join("models/gone.obj")).unwrap();
+        // Another file under the same name (a different inode, same size).
+        std::fs::write(f.dir.join("models/other.tmp"), OBJ).unwrap();
+        std::fs::rename(f.dir.join("models/other.tmp"), f.dir.join("models/swapped.obj")).unwrap();
+        let answer = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!(reasons(&answer), ["changed", "changed", "changed"], "{answer}");
+        assert_eq!(answer["results"][0], json!({"kind":"import","key":"0:changed.obj","ok":false,"reason":"changed"}));
+        assert_eq!(count(&f, "files"), 0);
+        assert_eq!(count(&f, "folders"), 0);
+    }
+
+    #[tokio::test]
+    async fn links_the_upload_folder_and_bad_paths_are_never_read() {
+        let f = Fixture::new(true).await;
+        let outside = f.dir.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("x.obj"), OBJ).unwrap();
+        symlink(outside.join("x.obj"), f.dir.join("models/link.obj")).unwrap();
+        symlink(&outside, f.dir.join("models/linkdir")).unwrap();
+        f.put("uploads/up.obj", OBJ);
+        f.put("fine.obj", OBJ);
+        std::fs::write(f.dir.join("models/.hidden.obj"), OBJ).unwrap();
+        let args = json!({"newFiles":[
+            {"root":0,"relativePath":"link.obj"},
+            {"root":0,"relativePath":"linkdir/x.obj"},
+            {"root":0,"relativePath":"uploads/up.obj"},
+            {"root":0,"relativePath":"../outside/x.obj"},
+            {"root":0,"relativePath":"/etc/passwd.obj"},
+            {"root":0,"relativePath":"a//b.obj"},
+            {"root":0,"relativePath":".hidden.obj"},
+            {"root":0,"relativePath":"fine.txt"},
+            {"root":5,"relativePath":"fine.obj"},
+            {"root":0,"relativePath":"fine.obj"}]});
+        let answer = value(f.invoke("disk_sync_preview", args).await).await;
+        let skipped: Vec<(String, String)> = answer["skipped"].as_array().unwrap().iter()
+            .map(|s| (s["key"].as_str().unwrap().to_owned(), s["reason"].as_str().unwrap().to_owned())).collect();
+        assert_eq!(skipped.len(), 9, "{skipped:?}");
+        for (key, reason) in &skipped {
+            let expected = if key.ends_with("fine.txt") { "invalid" } else { "outside" };
+            assert_eq!(reason, expected, "{key}");
+        }
+        assert_eq!(answer["counts"]["import"], 1);
+        // A link put in place after the preview is not followed either.
+        let token = f.started(json!({"newFiles":[{"root":0,"relativePath":"fine.obj"}]})).await;
+        std::fs::remove_file(f.dir.join("models/fine.obj")).unwrap();
+        symlink(outside.join("x.obj"), f.dir.join("models/fine.obj")).unwrap();
+        let answer = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!(reasons(&answer), ["outside"]);
+        assert_eq!(count(&f, "files"), 0);
+    }
+
+    #[tokio::test]
+    async fn names_that_differ_only_in_case_are_already_in_the_catalog() {
+        let f = Fixture::new(true).await;
+        f.file("foo.3mf");
+        f.put("Foo.3MF", &three_mf());
+        let answer = value(f.invoke("disk_sync_preview", json!({"newFiles":[{"root":0,"relativePath":"Foo.3MF"}]})).await).await;
+        assert_eq!(answer["skipped"][0]["reason"], "already_in_catalog");
+        assert_eq!(answer["token"], "");
+    }
+
+    #[tokio::test]
+    async fn rows_outside_the_roots_and_unusable_roots_are_skipped_not_removed() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let foreign = {
+            let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+            db::test_insert_minimal_file(&conn, "/somewhere/else/x.3mf", None).unwrap().to_string()
+        };
+        let answer = value(f.invoke("disk_sync_preview", json!({"missingModels":[foreign]})).await).await;
+        assert_eq!(answer["skipped"][0]["reason"], "outside");
+        // The root is replaced by an empty folder after the preview.
+        let id = f.gone("gone.3mf");
+        let comp_owner = f.gone("owner.3mf");
+        let token = f.started(json!({"missingModels":[id]})).await;
+        std::fs::rename(f.dir.join("models"), f.dir.join("models-old")).unwrap();
+        std::fs::create_dir(f.dir.join("models")).unwrap();
+        let answer = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!(reasons(&answer), ["root_unavailable"], "{answer}");
+        assert!(f.state(&id).0.is_none() && f.state(&comp_owner).0.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_model_with_companion_files_is_not_removed() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let id = f.gone("gone.3mf");
+        add_real_companion(&f, &id, "gone_extras", "pic.png");
+        let token = f.started(json!({"missingModels":[id]})).await;
+        let answer = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!(reasons(&answer), ["has_companions"], "{answer}");
+        assert!(f.state(&id).0.is_none());
+        assert!(f.dir.join("models/gone_extras/pic.png").is_file());
+    }
+
+    #[tokio::test]
+    async fn companion_rows_without_a_file_are_removed_and_a_folder_in_the_way_is_not_a_file() {
+        let f = Fixture::new(true).await;
+        let model = f.file("m.3mf");
+        let (loose, folder) = {
+            let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+            let m: i64 = model.parse().unwrap();
+            let loose = db::companions::insert_companion(&conn, m, "gone.png", f.dir.join("models/m_extras/gone.png").to_str().unwrap(), "image", Some(8), "2026-01-01T00:00:00Z").unwrap();
+            let folder = db::companions::insert_companion(&conn, m, "dir.png", f.dir.join("models/m_extras/dir.png").to_str().unwrap(), "image", Some(8), "2026-01-01T00:00:00Z").unwrap();
+            (loose, folder)
+        };
+        std::fs::create_dir_all(f.dir.join("models/m_extras/dir.png")).unwrap();
+        let token = f.started(json!({"danglingCompanions":[loose.to_string(), folder.to_string()]})).await;
+        let answer = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!(reasons(&answer), ["ok", "not_a_file"], "{answer}");
+        assert_eq!(answer["counts"]["removedCompanions"], 1);
+        assert!(f.row(&loose.to_string()).0.is_some());
+        assert!(f.row(&folder.to_string()).0.is_none());
+        assert!(f.dir.join("models/m_extras/dir.png").is_dir());
+    }
+
+    #[tokio::test]
+    async fn the_audit_of_a_removal_names_model_and_companion_ids() {
+        let f = Fixture::new(true).await;
+        let model = f.file("m.3mf");
+        let cid = {
+            let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+            db::companions::insert_companion(&conn, model.parse().unwrap(), "gone.png", f.dir.join("models/m_extras/gone.png").to_str().unwrap(), "image", Some(8), "2026-01-01T00:00:00Z").unwrap()
+        };
+        let token = f.started(json!({"danglingCompanions":[cid.to_string()]})).await;
+        let (r, p) = f.invoke_audited("disk_sync_apply_block", json!({"token":token,"seq":0})).await;
+        assert_eq!(r.status(), 200);
+        assert_eq!(*p.companion_ids.lock().unwrap(), vec![cid]);
+        assert_eq!(*p.file_ids.lock().unwrap(), vec![model.parse::<i64>().unwrap()]);
+    }
+
+    #[tokio::test]
+    async fn the_date_prefix_previews_and_renames_with_companions_and_twice_changes_nothing() {
+        let f = Fixture::new(true).await;
+        let id = f.file("c.3mf");
+        let (cid, old) = add_real_companion(&f, &id, "c_extras", "pic.png");
+        let outside = {
+            let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+            db::test_insert_minimal_file(&conn, "/somewhere/else/x.3mf", None).unwrap().to_string()
+        };
+        let missing = f.gone("none.3mf");
+        let preview = value(f.invoke("preview_date_rename", json!({"fileIds":[id, outside, missing],"dateSource":"modified"})).await).await;
+        let status: Vec<&str> = preview.as_array().unwrap().iter().map(|p| p["status"].as_str().unwrap()).collect();
+        // Outside the roots nothing can be resolved: reported like a missing file, and never touched.
+        assert_eq!(status, ["rename", "skip_missing", "skip_missing"], "{preview}");
+        let new_name = preview[0]["newName"].as_str().unwrap().to_owned();
+        assert!(new_name.ends_with("_c.3mf") || new_name.contains("c.3mf"), "{new_name}");
+        let items = json!({"items":[{"id":id,"newName":new_name}]});
+        let r = f.invoke("apply_date_rename", items.clone()).await;
+        let done = kind(r, 200).await;
+        assert_eq!(done, json!([{"id":id,"status":"renamed"}]));
+        let renamed = f.dir.join("models").join(&new_name);
+        assert!(renamed.is_file() && !f.dir.join("models/c.3mf").exists());
+        assert!(!old.exists());
+        let stem = new_name.trim_end_matches(".3mf");
+        assert!(f.dir.join("models").join(format!("{stem}_extras/pic.png")).is_file());
+        assert!(companion_path(&f, cid).contains(stem));
+        // The same names again: the file already has the prefix, nothing changes.
+        let again = kind(f.invoke("apply_date_rename", items).await, 200).await;
+        assert_eq!(again[0]["status"], "failed");
+        assert!(renamed.is_file());
+        assert!(f.dir.join("models/c.3mf").symlink_metadata().is_err());
+        // A name the preview never made, and one outside the roots.
+        let bad = kind(f.invoke("apply_date_rename", json!({"items":[{"id":outside,"newName":"2026-01-01_x.3mf"},{"id":missing,"newName":"2026-01-01_none.3mf"}]})).await, 200).await;
+        assert_eq!(bad[0]["reason"], "missing");
+        assert_eq!(bad[1]["reason"], "missing");
+        assert_eq!(f.app.fileops.as_ref().unwrap().pending_entries_for_test(), 0);
+        // 201 entries are too many.
+        let many: Vec<String> = (1..=201).map(|n| n.to_string()).collect();
+        let r = f.invoke("preview_date_rename", json!({"fileIds":many,"dateSource":"imported"})).await;
+        assert_eq!(kind(r, 422).await["kind"], "limit_exceeded");
+    }
+
+    #[tokio::test]
+    async fn the_date_prefix_never_follows_a_link_out_of_the_roots() {
+        let f = Fixture::new(true).await;
+        let outside = f.dir.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("x.3mf"), b"x").unwrap();
+        symlink(&outside, f.dir.join("models/linkdir")).unwrap();
+        let id = {
+            let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+            db::test_insert_minimal_file(&conn, f.dir.join("models/linkdir/x.3mf").to_str().unwrap(), None).unwrap().to_string()
+        };
+        let preview = value(f.invoke("preview_date_rename", json!({"fileIds":[id],"dateSource":"modified"})).await).await;
+        assert_eq!(preview[0]["status"], "skip_missing");
+        let r = kind(f.invoke("apply_date_rename", json!({"items":[{"id":id,"newName":"2026-01-01_x.3mf"}]})).await, 200).await;
+        assert_eq!(r[0]["status"], "failed");
+        assert!(outside.join("x.3mf").is_file());
+    }
+
+    #[tokio::test]
+    async fn the_date_prefix_body_limit_is_384_kib_over_the_real_http_path() {
+        let f = Fixture::new(true).await;
+        // 200 names of 255 bytes, every character escaped as a: about 316 000 bytes.
+        let name: String = "\\u0061".repeat(255);
+        let items: Vec<String> = (1..=200).map(|n| format!(r#"{{"id":"{n}","newName":"{name}"}}"#)).collect();
+        let body = format!(r#"{{"items":[{}]}}"#, items.join(","));
+        assert!(body.len() > 300_000 && body.len() < 384 * 1024);
+        let r = f.invoke_raw("apply_date_rename", body).await;
+        let answer = kind(r, 200).await;
+        assert_eq!(answer.as_array().unwrap().len(), 200);
+        // Above the limit: 413, nothing parsed.
+        let too_big = format!(r#"{{"items":[{{"id":"1","newName":"{}"}}]}}"#, "a".repeat(400 * 1024));
+        assert_eq!(f.invoke_raw("apply_date_rename", too_big).await.status(), 413);
+        // The preview stays small: 200 ids fit the 16 KiB of the other writes.
+        let ids: Vec<String> = (1..=200).map(|n| n.to_string()).collect();
+        let r = f.invoke("preview_date_rename", json!({"fileIds":ids,"dateSource":"modified"})).await;
+        assert_eq!(r.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn a_large_selection_fits_the_preview_body() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let rows: Vec<Value> = (0..500).map(|n| json!({"root":0,"relativePath":format!("dir{n}/{}.3mf", "x".repeat(150))})).collect();
+        let ids: Vec<String> = (1..=1000).map(|n| (n + 100).to_string()).collect();
+        let r = f.invoke("disk_sync_preview", json!({"newFiles":rows,"missingModels":ids})).await;
+        let answer = kind(r, 200).await;
+        assert_eq!(answer["token"], "");
+        assert_eq!(answer["skipped"].as_array().unwrap().len(), 1500);
+    }
+    async fn ids_gone(f: &Fixture, n: usize) -> Vec<String> {
+        (0..n).map(|i| f.gone(&format!("gone{i}.3mf"))).collect()
+    }
+    #[tokio::test]
+    async fn a_removal_of_fifty_or_more_needs_the_password_and_changes_nothing_without_it() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let ids = ids_gone(&f, 50).await;
+        let token = f.plan(json!({"missingModels":ids})).await;
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await;
+        assert_eq!(kind(r, 403).await["kind"], "password_required");
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true,"password":"wrong"})).await;
+        assert_eq!(kind(r, 403).await["kind"], "password_invalid");
+        // Nothing started, nothing booked, no backup: the block is still refused.
+        assert!(!backups(&f));
+        assert_eq!(kind(f.block(&token, 0).await, 409).await["kind"], "not_started");
+        assert!(ids.iter().all(|id| f.state(id).0.is_none()));
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true,"password":"test-password-long"})).await;
+        assert_eq!(r.status(), 200);
+        // A block works off at most 10 rows.
+        let done = kind(f.block(&token, 0).await, 200).await;
+        assert_eq!((done["counts"]["removedModels"].clone(), done["remaining"].clone()), (json!(10), json!(40)));
+    }
+    #[tokio::test]
+    async fn a_removal_below_fifty_needs_no_password_but_a_wrong_one_is_still_refused() {
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let ids = ids_gone(&f, 49).await;
+        let token = f.plan(json!({"missingModels":ids})).await;
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true,"password":"wrong"})).await;
+        assert_eq!(kind(r, 403).await["kind"], "password_invalid");
+        assert!(!backups(&f));
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true})).await;
+        assert_eq!(r.status(), 200);
+    }
+    #[tokio::test]
+    async fn the_password_check_being_busy_does_not_start_a_large_removal() {
+        let _serial = crate::password::PASSWORD_TEST_LOCK.lock().await;
+        let f = Fixture::new(true).await;
+        f.file("keep.3mf");
+        let ids = ids_gone(&f, 50).await;
+        let token = f.plan(json!({"missingModels":ids})).await;
+        let first = crate::password::hash_slot().await.unwrap();
+        let second = crate::password::hash_slot().await.unwrap();
+        let r = f.invoke("disk_sync_apply_start", json!({"token":token,"confirmRemoval":true,"password":"test-password-long"})).await;
+        assert_eq!(r.status(), 503);
+        drop((first, second));
+        assert!(!backups(&f));
+        assert_eq!(kind(f.block(&token, 0).await, 409).await["kind"], "not_started");
+        assert!(ids.iter().all(|id| f.state(id).0.is_none()));
+    }
+}
+
+#[path = "disk_start_sync_tests.rs"]
+mod disk_start_sync_tests;

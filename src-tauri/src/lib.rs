@@ -29,12 +29,18 @@ use std::sync::Mutex;
 
 use tauri::Manager;
 
+/// Connection, migration report, catalog path, trash folder and the instance lock.
+type StorageResult = Result<
+    (rusqlite::Connection, Option<db::MigrationReport>, std::path::PathBuf, std::path::PathBuf, Option<db::instance_lock::InstanceLock>),
+    startup_error::StartupFailure,
+>;
+
 /// Opens everything startup needs from disk. Failures are returned with the offending
 /// path so the user can be told what to fix. Folder checks precede catalog writes;
 /// opening the catalog can migrate it before a later database operation fails.
 fn open_storage(
     app: &tauri::App,
-) -> Result<(rusqlite::Connection, Option<db::MigrationReport>, std::path::PathBuf, std::path::PathBuf), startup_error::StartupFailure> {
+) -> StorageResult {
     use startup_error::{StartupFailure, StartupStage};
     let app_data_dir = app.path().app_data_dir()
         .map_err(|e| StartupFailure::new(StartupStage::DataFolder, std::path::Path::new(""), e))?;
@@ -43,7 +49,7 @@ fn open_storage(
 
 fn open_storage_at(
     app_data_dir: &std::path::Path,
-) -> Result<(rusqlite::Connection, Option<db::MigrationReport>, std::path::PathBuf, std::path::PathBuf), startup_error::StartupFailure> {
+) -> StorageResult {
     use startup_error::{StartupFailure, StartupStage};
     std::fs::create_dir_all(app_data_dir)
         .map_err(|e| StartupFailure::new(StartupStage::DataFolder, app_data_dir, e))?;
@@ -52,10 +58,15 @@ fn open_storage_at(
     std::fs::create_dir_all(&trash_dir)
         .map_err(|e| StartupFailure::new(StartupStage::TrashFolder, &trash_dir, e))?;
     let db_path = app_data_dir.join("catalog.db");
+    let db_path = if db_path.exists() {
+        db_path.canonicalize().map_err(|e| StartupFailure::new(StartupStage::Catalog, &db_path, e))?
+    } else { db_path };
+    let instance_lock = db::instance_lock::InstanceLock::from_env(&db_path, "desktop")
+        .map_err(|e| StartupFailure::new(StartupStage::Catalog, &db_path, e))?;
     let (conn, migration_report) = db::connect_with_report(&db_path)
         .map_err(|e| StartupFailure::new(StartupStage::Catalog, &db_path, e))?;
     harden_permissions(&db_path);
-    Ok((conn, migration_report, db_path, trash_dir))
+    Ok((conn, migration_report, db_path, trash_dir, instance_lock))
 }
 
 use katalog_core::safe_file::harden_permissions;
@@ -188,13 +199,25 @@ pub fn run() {
                 })
                 .build(),
         )
+        // Size and maximized state survive a restart. POSITION is left out on purpose: the plugin restores any saved
+        // rectangle that touches a monitor, which can leave the title bar off-screen after a monitor was removed.
+        // VISIBLE is left out too: the startup code decides when the window is shown.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED
+                        | tauri_plugin_window_state::StateFlags::FULLSCREEN,
+                )
+                .build(),
+        )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             app.manage(commands::NativeDragState::default());
             // The window is created last: if the data folder or catalog cannot be opened,
             // no webview exists whose commands would hit state that was never managed.
-            let (mut conn, migration_report, db_path, trash_dir) = match open_storage(app) {
+            let (mut conn, migration_report, db_path, trash_dir, instance_lock) = match open_storage(app) {
                 Ok(storage) => storage,
                 Err(failure) => {
                     startup_error::report_and_exit(app.handle(), &failure);
@@ -234,6 +257,8 @@ pub fn run() {
             let close_behavior = tray::CloseBehavior::from_db(&conn);
             let wants_tray = close_behavior.action() == tray::CloseAction::Tray;
             app.manage(close_behavior);
+            // Keep ownership across connection replacement and background work.
+            app.manage(instance_lock);
             app.manage(commands::AppState {
                 import_jobs: commands::ImportJobs::for_app(app.handle().clone()),
                 db: Mutex::new(conn),

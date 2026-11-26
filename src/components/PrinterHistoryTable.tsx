@@ -51,7 +51,6 @@ export function PrinterHistoryTable({ printerId, jobs, link, onMaterial, onChang
   printerId: string; jobs: PrinterHistoryJob[]; link: PrinterLinkState; onMaterial: (context: PrinterNavigation) => void; onChanged: () => void;
 }) {
   const t = useT();
-  const isWeb = import.meta.env.VITE_TARGET === 'web';
   const { language } = useLanguage();
   const canEdit = useCanEditMetadata();
   const reasonText = useFailureReasonText();
@@ -61,7 +60,7 @@ export function PrinterHistoryTable({ printerId, jobs, link, onMaterial, onChang
   const number = useMemo(() => new Intl.NumberFormat(language, { maximumFractionDigits: 1 }), [language]);
   const visible = jobs.slice(0, shown);
   const hasAutoClosed = jobs.some(j => j.autoClosed);
-  const canSetReason = canEdit && !isWeb;
+  const canSetReason = canEdit;
   const columns = ['pmFile', 'pmDuration', 'pmUsage', 'pmResult', 'pmReason', 'pmStatus'] as const;
   return <>
     {/* Scrolls on its own so a long history does not push the page down; the head stays in view. */}
@@ -90,7 +89,7 @@ export function PrinterHistoryTable({ printerId, jobs, link, onMaterial, onChang
           </div></td>
           <td className="p-2">{j.autoClosed
             ? <span className="text-caption px-1.5 py-0.5 rounded bg-[var(--panel-2)] text-[var(--ink-2)] whitespace-nowrap" title={raw}>{t(j.usedMm > 0 ? 'pmOlderHistory' : 'pmNoUsage')}</span>
-            : j.state === 'open' ? isWeb ? t('webManagerJobOpen') : <button className={`${pmButton} h-6 !py-0`} onClick={() => onMaterial({ printerId, reviewJobs: true })}>{t('pmConfirmJobs')}</button>
+            : j.state === 'open' ? <button className={`${pmButton} h-6 !py-0`} onClick={() => onMaterial({ printerId, reviewJobs: true })}>{t('pmConfirmJobs')}</button>
             : t(j.state === 'confirmed' ? 'pmBooked' : 'pmIgnored')}</td>
         </tr>;
       })}</tbody>
@@ -98,7 +97,6 @@ export function PrinterHistoryTable({ printerId, jobs, link, onMaterial, onChang
     {jobs.length > shown && <button type="button" className={`${pmButton} self-start`} onClick={() => setShown(n => n + HISTORY_PAGE_SIZE)}>
       {t('pmShowMore').replace('{count}', () => String(jobs.length - shown))}</button>}
     {hasAutoClosed && <p className="text-caption text-[var(--ink-3)]">{t('pmAutoClosedNote')}</p>}
-    {isWeb && <p className="text-caption text-[var(--ink-3)]">{t('pfWebReadOnly')}</p>}
     {editing && <ReasonDialog job={editing} onClose={() => setEditing(null)}
       onSave={async (reason, note) => { await setPrinterJobFailure(editing.id, reason, note); onChanged(); }} />}
   </>;

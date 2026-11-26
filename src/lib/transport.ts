@@ -7,12 +7,12 @@ import { WEB_READ_COMMANDS, WEB_WRITE_COMMANDS } from './readOnly';
 import { retryAfterSeconds } from './fileOpsErrors';
 import { canEditMetadata, canManageFiles, canOpenInSlicerLink, getSnapshot, readResponse } from './webSession';
 
-export const FILE_OPS_COMMANDS = ['rename_file', 'move_files_to_folder', 'delete_files', 'restore_file', 'delete_file_permanently', 'empty_trash_start', 'empty_trash_block', 'create_folder', 'rename_folder', 'move_folder', 'remove_folder_from_catalog', 'remove_companion', 'restore_companion'] as const;
+export const FILE_OPS_COMMANDS = ['rename_file', 'move_files_to_folder', 'delete_files', 'restore_file', 'delete_file_permanently', 'empty_trash_start', 'empty_trash_block', 'create_folder', 'rename_folder', 'move_folder', 'remove_folder_from_catalog', 'trash_folder_start', 'trash_folder_block', 'remove_companion', 'restore_companion', 'disk_sync_preview', 'disk_sync_apply_start', 'disk_sync_apply_block', 'preview_date_rename', 'apply_date_rename'] as const;
 
 const FILE_OPS_MAX_AUTO_RETRY_SECONDS = 5;
 
 // Uploads and file operations track their own operation ids; only plain catalog writes are replay-protected by the server.
-const OWN_OPERATION_COMMANDS: readonly string[] = [...FILE_OPS_COMMANDS, 'start_upload_import', 'discard_upload', 'cancel_import'];
+const OWN_OPERATION_COMMANDS: readonly string[] = [...FILE_OPS_COMMANDS, 'start_source_import', 'start_upload_import', 'discard_upload', 'cancel_import'];
 // File operations on a single companion file are repeatable: the server answers the second request of the same id from the stored result.
 const REPEATABLE_FILE_OPS: readonly string[] = ['remove_companion', 'restore_companion'];
 // Waits before the automatic repeats after a lost or timed-out answer. The server may still be finishing the first attempt, which the shared request id makes safe.

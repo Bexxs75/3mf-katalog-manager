@@ -5,6 +5,7 @@ import { runStartSync, type StartSyncResult } from '../lib/api/diskSync';
 export interface StartSyncNotice {
   /** Set with automatic take-over: what was added, even if it was nothing but failures. */
   added: { files: number; renames: number; failed: number } | null;
+  /** With `added`: new files that were found but neither taken over nor failed (still open). */
   newFiles: number; renamed: number; missing: number; duplicates: number; unreachable: number;
 }
 
@@ -16,12 +17,15 @@ export function startSyncNotice(result: StartSyncResult): StartSyncNotice | null
   if (result.unreachableRoots > 0) return { ...base, added: null };
   const applied = result.applied;
   const notice: StartSyncNotice = applied
-    ? { ...base, added: { files: applied.added, renames: applied.renamed, failed: applied.failed }, missing: result.missingFiles, duplicates: result.duplicates }
+    ? { ...base, added: { files: applied.added, renames: applied.renamed, failed: applied.failed }, newFiles: Math.max(0, result.newFiles - applied.added - applied.failed), missing: result.missingFiles, duplicates: result.duplicates }
     : { ...base, added: null, newFiles: result.newFiles, renamed: result.renamed, missing: result.missingFiles, duplicates: result.duplicates };
   const added = notice.added;
   const anything = (added ? added.files + added.renames + added.failed : 0) + notice.newFiles + notice.renamed + notice.missing + notice.duplicates;
   return anything > 0 ? notice : null;
 }
+
+/** Web: the server runs its start check in the background; ask again until it is done, but not forever. Mutable so tests need not wait. */
+export const startSyncPoll = { intervalMs: 5000, maxAttempts: 24 };
 
 // Once per app session, not per component instance: remounting must not scan again.
 let startSyncStarted = false;
@@ -41,7 +45,15 @@ export function useStartSync(ready: boolean, onApplied: () => Promise<unknown>) 
     startSyncStarted = true;
     void (async () => {
       try {
-        const result = await runStartSync();
+        let result = await runStartSync();
+        if (import.meta.env.VITE_TARGET === 'web') {
+          for (let attempt = 0; result.busy && attempt < startSyncPoll.maxAttempts; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, startSyncPoll.intervalMs));
+            result = await runStartSync();
+          }
+          // Still running after the last try: say nothing rather than report a half result.
+          if (result.busy) return;
+        }
         if (result.applied && (result.applied.added > 0 || result.applied.renamed > 0)) {
           try { await appliedRef.current(); } catch (e) { console.error('Catalog refresh after start sync failed', e); }
         }

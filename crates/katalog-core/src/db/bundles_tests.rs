@@ -33,16 +33,17 @@ fn a_bundle_keeps_the_order_given_and_the_first_file_is_the_title() {
 }
 
 #[test]
-fn a_bundle_takes_two_to_two_hundred_files() {
+fn a_bundle_takes_one_to_two_hundred_files() {
     let conn = connect_in_memory().unwrap();
     let f = files(&conn, 201);
-    assert_eq!(coded(create_bundle(&conn, "A", BundleKind::Parts, &f[..1], "t").unwrap_err()), ErrorCode::BundleTooFewFiles);
     assert_eq!(coded(create_bundle(&conn, "A", BundleKind::Parts, &[], "t").unwrap_err()), ErrorCode::BundleTooFewFiles);
+    let single = create_bundle(&conn, "Single", BundleKind::Parts, &f[..1], "t").unwrap();
+    assert_eq!(member_ids(&conn, single), vec![f[0]], "one file is a bundle");
     assert!(create_bundle(&conn, "A", BundleKind::Parts, &f[..2], "t").is_ok());
     assert!(create_bundle(&conn, "B", BundleKind::Parts, &f[1..201], "t").is_ok(), "200 files");
     assert_eq!(coded(create_bundle(&conn, "C", BundleKind::Parts, &f, "t").unwrap_err()), ErrorCode::BundleTooManyFiles);
-    assert_eq!(count(&conn, "bundles"), 1, "A dissolved when its second file moved to B; the rejected ones left nothing behind");
-    assert_eq!(count(&conn, "bundle_members"), 200);
+    assert_eq!(count(&conn, "bundles"), 2, "Single went with its only file; A keeps the file B did not take; the rejected ones left nothing behind");
+    assert_eq!(count(&conn, "bundle_members"), 201);
 }
 
 #[test]
@@ -78,9 +79,12 @@ fn a_file_is_in_one_bundle_only_and_moves_when_bundled_again() {
         .unwrap();
     assert_eq!(in_two, 0);
 
-    // Moving the second member out of a pair leaves one behind: that bundle is dissolved.
+    // Moving the second member out of a pair leaves one behind: a bundle of one file stays.
     create_bundle(&conn, "Third", BundleKind::Parts, &[f[1], f[4]], "t").unwrap();
-    assert!(get_bundle(&conn, first).unwrap().is_none(), "one member is no bundle");
+    assert_eq!(member_ids(&conn, first), vec![f[0]], "one member is still a bundle");
+    // Moving the last member out dissolves the bundle.
+    create_bundle(&conn, "Fourth", BundleKind::Parts, &[f[0], f[4]], "t").unwrap();
+    assert!(get_bundle(&conn, first).unwrap().is_none(), "no member is no bundle");
     assert_eq!(count(&conn, "files"), 5, "no file is touched");
 }
 
@@ -108,13 +112,15 @@ fn a_bundle_cannot_grow_past_two_hundred_members() {
 }
 
 #[test]
-fn removing_members_dissolves_a_bundle_that_drops_below_two() {
+fn removing_members_dissolves_a_bundle_that_loses_its_last_one() {
     let conn = connect_in_memory().unwrap();
     let f = files(&conn, 4);
     let id = create_bundle(&conn, "A", BundleKind::Parts, &[f[0], f[1], f[2]], "t").unwrap();
     assert_eq!(remove_files_from_bundle(&conn, &[f[1], f[3]]).unwrap(), 1, "a file outside every bundle is ignored");
     assert_eq!(member_ids(&conn, id), vec![f[0], f[2]]);
     remove_files_from_bundle(&conn, &[f[0]]).unwrap();
+    assert_eq!(member_ids(&conn, id), vec![f[2]], "a bundle of one file stays");
+    remove_files_from_bundle(&conn, &[f[2]]).unwrap();
     assert!(get_bundle(&conn, id).unwrap().is_none());
     assert_eq!(count(&conn, "bundles"), 0);
     assert_eq!(count(&conn, "bundle_members"), 0, "the last member left with the bundle");
@@ -185,14 +191,18 @@ fn the_list_shows_trashed_members_and_hides_bundles_with_fewer_than_two_rows() {
     assert_eq!(listed.iter().map(|x| x.id).collect::<Vec<_>>(), vec![a, b]);
     assert_eq!(listed[0].members.iter().map(|m| m.in_trash).collect::<Vec<_>>(), vec![false, true]);
 
-    // A one-member leftover (a deletion path that did not prune) is invisible, and goes at the next prune.
+    // A one-member bundle is a real bundle and stays listed and untouched by a prune.
     conn.execute("DELETE FROM bundle_members WHERE file_id = ?1", [f[3]]).unwrap();
+    assert_eq!(list_bundles(&conn).unwrap().iter().map(|x| x.id).collect::<Vec<_>>(), vec![a, b]);
+    assert_eq!(prune_bundles(&conn).unwrap(), 0);
+    // An empty one (a deletion path that did not prune) is invisible, and goes at the next prune.
+    conn.execute("DELETE FROM bundle_members WHERE file_id = ?1", [f[2]]).unwrap();
     assert_eq!(list_bundles(&conn).unwrap().iter().map(|x| x.id).collect::<Vec<_>>(), vec![a]);
     assert!(get_bundle(&conn, b).unwrap().is_none());
     assert_eq!(count(&conn, "bundles"), 2);
     assert_eq!(prune_bundles(&conn).unwrap(), 1);
     assert_eq!(count(&conn, "bundles"), 1);
-    assert_eq!(count(&conn, "bundle_members"), 2, "the leftover's last member went with it");
+    assert_eq!(count(&conn, "bundle_members"), 2);
 }
 
 #[test]
@@ -209,9 +219,11 @@ fn the_trash_keeps_the_membership_and_deleting_for_good_prunes() {
     delete_file(&conn, f[0]).unwrap();
     assert_eq!(member_ids(&conn, id), vec![f[1], f[2]]);
     delete_file(&conn, f[1]).unwrap();
-    assert_eq!(count(&conn, "bundles"), 0, "one member left: the bundle goes");
+    assert_eq!(count(&conn, "bundles"), 1, "one member left: the bundle stays");
+    delete_file(&conn, f[2]).unwrap();
+    assert_eq!(count(&conn, "bundles"), 0, "no member left: the bundle goes");
     assert_eq!(count(&conn, "bundle_members"), 0);
-    assert_eq!(count(&conn, "files"), 1);
+    assert_eq!(count(&conn, "files"), 0);
 }
 
 #[test]
@@ -219,7 +231,7 @@ fn a_catalog_start_removes_leftover_bundles() {
     let mut conn = connect_in_memory().unwrap();
     let f = files(&conn, 2);
     let id = create_bundle(&conn, "A", BundleKind::Parts, &f, "t").unwrap();
-    conn.execute("DELETE FROM bundle_members WHERE file_id = ?1", [f[1]]).unwrap();
+    conn.execute("DELETE FROM bundle_members WHERE bundle_id = ?1", [id]).unwrap();
     assert_eq!(count(&conn, "bundles"), 1);
     crate::db::repository::init(&mut conn).unwrap();
     assert_eq!(count(&conn, "bundles"), 0, "bundle {id} was pruned at start");
@@ -261,10 +273,11 @@ fn restoring_leaves_out_deleted_and_re_bundled_members_and_counts_them() {
 }
 
 #[test]
-fn restoring_with_fewer_than_two_members_left_writes_nothing() {
+fn restoring_with_no_member_left_writes_nothing() {
     let conn = connect_in_memory().unwrap();
     let f = files(&conn, 3);
     delete_file(&conn, f[1]).unwrap();
+    delete_file(&conn, f[0]).unwrap();
     let members: Vec<(i64, String)> = vec![(f[0], "x".into()), (f[1], String::new())];
     assert_eq!(coded(restore_bundle(&conn, "Vase", BundleKind::Parts, &members, "t").unwrap_err()), ErrorCode::BundleTooFewFiles);
     assert_eq!((count(&conn, "bundles"), count(&conn, "bundle_members")), (0, 0));

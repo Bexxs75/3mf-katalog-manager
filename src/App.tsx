@@ -3,7 +3,8 @@ import { contextSelection, selectionState, runModelSelection } from './lib/model
 import { WhatsNewDialog } from './components/WhatsNewDialog';
 import { useWhatsNew } from './hooks/useWhatsNew';
 import { subscribeFileOpsApplied, subscribeFileOpsRefresh } from './lib/fileOps';
-import { canEditMetadata, canManageFiles, useCanEditMetadata } from './lib/webSession';
+import { MIN_BUNDLE_MEMBERS } from './lib/bundles';
+import { canEditMetadata, canManageFiles, useCanEditMetadata, useCanManageFiles } from './lib/webSession';
 import { reportMetadataError } from './lib/metadataErrors';
 import { WebImport } from './components/WebImport';
 import { isReadOnly } from './lib/readOnly';
@@ -240,10 +241,10 @@ export default function App() {
   }, []);
   // A request that was served must not move the panel again when it is opened the next time.
   useEffect(() => { if (!settingsOpen) setSettingsRequest(null); }, [settingsOpen]);
-  // Source folders, start sync, companions, date rename, move history and the Linux menu have no web server command.
+  // Start sync, companions, date rename, move history and the Linux menu have no web server command.
   const web = import.meta.env.VITE_TARGET === 'web';
   const sourceCheck = useSourceFolderCheck({
-    ready: !web && !store.initialLoading,
+    ready: !store.initialLoading,
     jobActive: fileImport.jobActive,
     // Without a source folder the check has nothing to do; show where to add one.
     onNoFolders: () => openSettingsAt('sourceFolders'),
@@ -272,8 +273,9 @@ export default function App() {
     ...(collections.activeCollection ? [collections.refreshCollectionModels(collections.activeCollection)] : []),
   ]);
   // Not while the first-run dialog is open, in the trash or other views, or during an import.
+  const canManageFilesNow = useCanManageFiles();
   const startSync = useStartSync(
-    !web && !store.initialLoading && !store.initialLoadFailed && store.folders.length > 0 && !setupDialogOpen && mainView === 'catalog' && !fileImport.jobActive,
+    (!web || canManageFilesNow) && !store.initialLoading && !store.initialLoadFailed && store.folders.length > 0 && !setupDialogOpen && mainView === 'catalog' && !fileImport.jobActive,
     reloadAfterDiskSync,
   );
   // "Open with": one cataloged file opens its detail page; anything else asks first (view only / list).
@@ -376,7 +378,7 @@ export default function App() {
     bulk.setConfirmBulkDelete(value);
   }, [bundleActions.interceptDelete, bulk.setConfirmBulkDelete]);
   const toolbarBundleActions: BulkBundleActions = {
-    canCreate: bulk.selectedForBulk.size >= 2,
+    canCreate: bulk.selectedForBulk.size >= MIN_BUNDLE_MEMBERS,
     canAddTo: bundles.length > 0,
     canRemove: bundleActions.state.bundledIds.length > 0,
     canDissolve: bundleActions.state.covered.length > 0,
@@ -404,10 +406,10 @@ export default function App() {
     setDateRenameOutcome(outcome);
     void store.refreshFiles().catch((e) => console.error('[files] refresh after date rename failed:', e));
   };
-  const removeCatalogModels = async (fileIds: string[]) => {
+  const removeCatalogModels = async (fileIds: string[], password?: string) => {
     if (!canEditMetadata()) return;
     try {
-      await invoke('remove_files_from_catalog', { fileIds });
+      await invoke('remove_files_from_catalog', password === undefined ? { fileIds } : { fileIds, password });
       store.setModels((models) => models.filter((model) => !fileIds.includes(model.id)));
       if (isReadOnly()) {
         store.setSelectedId(null);
@@ -486,7 +488,7 @@ export default function App() {
     : [];
   const contextModels = contextModel ? contextSelection(store.models, contextModel.id, bulk.selectedForBulk) : [];
   const contextFileIds = contextModels.map(model => model.id);
-  const contextStlModels = contextModels.filter(model => ['3mf', 'obj', 'stp', 'step'].includes(modelFileType(model)));
+  const contextStlModels = contextModels.filter(model => (isReadOnly() ? ['3mf', 'obj'] : ['3mf', 'obj', 'stp', 'step']).includes(modelFileType(model)));
   const contextPlateModels = contextModels.filter(model => model.path.toLowerCase().endsWith('.3mf'));
   const contextBundledIds = selectionBundleState(contextFileIds, bundles).bundledIds;
 
@@ -528,10 +530,24 @@ export default function App() {
     setDetailModelId(id);
   };
 
+  // With no batch selection, the open card of a bundle stands for the whole bundle (as in its context menu).
+  const openBundleOfSelection = () => {
+    if (!collapseBundles || bulk.selectedForBulk.size > 0 || !store.selectedId) return null;
+    const bundle = bundles.find(candidate => candidate.members.some(member => member.fileId === store.selectedId && !member.inTrash));
+    const ids = bundle?.members.flatMap(member => member.inTrash || !store.models.some(model => model.id === member.fileId) ? [] : member.fileId) ?? [];
+    return bundle && ids.length > 1 ? { bundle, ids } : null;
+  };
+
   const openSelectionMenu = (initialView: 'move' | 'rename' | 'confirmRemove' | 'confirmDelete') => {
     if (fileImport.jobActive) return;
     const ids = bulk.selectedForBulk.size ? [...bulk.selectedForBulk] : store.selectedId ? [store.selectedId] : [];
     if (!ids.length || (initialView === 'rename' && ids.length !== 1)) return;
+    const openBundle = initialView === 'move' ? openBundleOfSelection() : null;
+    if (openBundle) {
+      const bundleBounds = tileOf(ids[0])?.getBoundingClientRect();
+      setContextMenu({ modelId: ids[0], x: bundleBounds?.left ?? 0, y: bundleBounds?.top ?? 0, bundleId: openBundle.bundle.id, initialView });
+      return;
+    }
     const bounds = tileOf(ids[0])?.getBoundingClientRect();
     setContextMenu({ modelId: ids[0], x: bounds?.left ?? 0, y: bounds?.top ?? 0, initialView });
   };
@@ -552,10 +568,11 @@ export default function App() {
     navigationEnabled: mainView === 'catalog' && !detailModelId && !collections.collectionsGalleryOpen,
     toggleBulkSelect: bulk.toggleBulkSelect,
     onMoveSelection: web ? () => openSelectionMenu('move') : () => {
-      const ids = bulk.selectedForBulk.size > 0 ? [...bulk.selectedForBulk] : store.selectedId ? [store.selectedId] : [];
+      const openBundle = openBundleOfSelection();
+      const ids = openBundle ? openBundle.ids : bulk.selectedForBulk.size > 0 ? [...bulk.selectedForBulk] : store.selectedId ? [store.selectedId] : [];
       openMoveDialog(ids, ids.length === 1 ? tileOf(ids[0]) : (document.activeElement as HTMLElement | null));
     },
-    onUndo: bundleActions.undoable ? bundleActions.runUndo : web || fileImport.jobActive ? undefined : () => void dragDrop.undo(),
+    onUndo: bundleActions.undoable ? bundleActions.runUndo : fileImport.jobActive ? undefined : () => void dragDrop.undo(),
   });
 
   useEffect(() => {
@@ -634,11 +651,16 @@ export default function App() {
     if (noWebGL && store.pendingSnapshotIds.length) store.skipSnapshots(store.pendingSnapshotIds);
   }, [noWebGL, store.pendingSnapshotIds, store.skipSnapshots]);
 
+  // A copy from a server folder adds files, folders and tags just like the upload import does.
+  const reloadAfterSourceImport = () => Promise.all([store.refreshFiles(), store.refreshFolders(), store.refreshTags()]);
+
   // The settings take the detail panel's place in the catalog and lie over the main area
   // elsewhere, so every view reaches them from the same gear in the rail.
   const renderSettingsPanel = (overlay: boolean) => (
     <SettingsPanel
       onOpenWhatsNew={whatsNew.reopen}
+      onCheckSourceFolders={() => void sourceCheck.check()}
+      onSourceFoldersImported={reloadAfterSourceImport}
       overlay={overlay}
       onClose={closeSettings}
       onOpenPrinters={() => { setSettingsOpen(false); changeMainView('printers'); }}
@@ -845,11 +867,11 @@ export default function App() {
               setConfirmBulkDelete={setConfirmBulkDelete}
               bulkDelete={bulk.bulkDelete}
               onBulkMove={web ? undefined : () => openMoveDialog([...bulk.selectedForBulk], document.activeElement as HTMLElement | null)}
-              bulkRemove={() => removeCatalogModels(Array.from(bulk.selectedForBulk))}
+              bulkRemove={(password) => removeCatalogModels(Array.from(bulk.selectedForBulk), password)}
               onCatalogRemoved={refreshAfterRemoval}
               onFolderRenamed={onFolderRenamed}
               onFolderTrashed={onFolderTrashed}
-              onDateRenamed={web ? undefined : onDateRenamed}
+              onDateRenamed={onDateRenamed}
               onRemoveModelFromCatalog={(id) => removeCatalogModels([id])}
               selectAllVisible={() => bulk.selectAllVisible(filteredIds)}
               clearBulkSelection={bulk.clearBulkSelection}
@@ -966,6 +988,10 @@ export default function App() {
                 for (const model of contextBundleModels) if (model.favorite === favorite) void store.toggleFavorite(model.id);
               }}
               onDissolve={() => void bundleActions.dissolve([contextBundle.id])}
+              onMove={web || !canManageFiles() ? undefined : () => openMoveDialog(contextBundleModels.map(model => model.id), tileOf(contextModel.id))}
+              autoMove={contextMenu.initialView === 'move'}
+              moveFileIds={web && canManageFiles() ? contextBundleModels.map(model => model.id) : undefined}
+              name={contextBundle.name}
               onDelete={() => bundleActions.askDeleteBundle(contextBundle, tileOf(contextModel.id))}
             />
           )}
@@ -989,7 +1015,7 @@ export default function App() {
               } : undefined}
               stlModel={contextStlModels.find(model => ['step', 'stp'].includes(modelFileType(model))) ?? contextStlModels[0] ?? contextModel}
               onDelete={() => runModelSelection(contextFileIds, id => store.deleteModel(id))}
-              onRemove={() => removeCatalogModels(contextFileIds)}
+              onRemove={(password) => removeCatalogModels(contextFileIds, password)}
               inQueue={selectionState(contextModels.map(model => model.queuePosition !== null))}
               onToggleQueue={() => {
                 const queued = contextModels.every(model => model.queuePosition !== null);
@@ -1012,7 +1038,7 @@ export default function App() {
               onMove={web ? undefined : () => openMoveDialog(
                 bulk.selectedForBulk.has(contextModel.id) ? [...bulk.selectedForBulk] : [contextModel.id], tileOf(contextModel.id))}
               bundleActions={{
-                onCreate: contextFileIds.length >= 2 ? () => bundleActions.openDialog({ mode: 'create', fileIds: contextFileIds }, tileOf(contextModel.id)) : undefined,
+                onCreate: contextFileIds.length >= MIN_BUNDLE_MEMBERS ? () => bundleActions.openDialog({ mode: 'create', fileIds: contextFileIds }, tileOf(contextModel.id)) : undefined,
                 onAddTo: bundles.length > 0 ? () => bundleActions.openDialog({ mode: 'add', fileIds: contextFileIds, targetId: null }, tileOf(contextModel.id)) : undefined,
                 onRemove: contextBundledIds.length > 0 ? () => void bundleActions.remove(contextBundledIds) : undefined,
               }}
@@ -1050,6 +1076,7 @@ export default function App() {
               scans={sourceCheck.scans}
               onClose={sourceCheck.closeDialog}
               onImport={fileImport.importSourceFiles}
+              onImported={reloadAfterSourceImport}
               onReject={rejectSourceFiles}
               onRescan={sourceCheck.rescan}
             />
@@ -1096,6 +1123,9 @@ export default function App() {
               issues={cleanup.cleanupIssues}
               onClose={cleanup.closeCleanupDialog}
               onDelete={(fileIds) => cleanup.deleteSelectedCleanupFiles(fileIds, store.refetchAfterPartialDelete)}
+              error={cleanup.cleanupError}
+              notice={cleanup.cleanupNotice}
+              returnFocus={cleanup.cleanupOpener}
             />
           )}
 

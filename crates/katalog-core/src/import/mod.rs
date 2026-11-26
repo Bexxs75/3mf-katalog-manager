@@ -1,5 +1,7 @@
 //! Serialized import jobs and their independent control path.
 pub mod files;
+pub mod hash_backfill;
+pub mod sources;
 pub mod placement;
 pub mod file_names;
 pub mod rename;

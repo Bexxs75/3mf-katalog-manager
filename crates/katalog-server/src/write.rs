@@ -25,10 +25,32 @@ pub const FILE_OPS_COMMANDS: &[&str] = &[
     "rename_folder",
     "move_folder",
     "remove_folder_from_catalog",
+    "trash_folder_start",
+    "trash_folder_block",
     "remove_companion",
     "restore_companion",
+    "disk_sync_preview",
+    "disk_sync_apply_start",
+    "disk_sync_apply_block",
+    "preview_date_rename",
+    "apply_date_rename",
 ];
 pub const WRITE_COMMANDS: &[&str] = &[
+    "add_source_folder",
+    "remove_source_folder",
+    "reject_source_files",
+    "reset_rejected_source_files",
+    "set_source_check_on_start",
+    "set_printer_link_enabled",
+    "test_printer_connection",
+    "clear_printer_api_key",
+    "remove_printer_connection",
+    "include_older_printer_history",
+    "sync_printers_now",
+    "ignore_printer_job",
+    "set_printer_job_failure",
+    "confirm_printer_jobs",
+
     "rename_file",
     "move_files_to_folder",
     "delete_files",
@@ -40,10 +62,20 @@ pub const WRITE_COMMANDS: &[&str] = &[
     "rename_folder",
     "move_folder",
     "remove_folder_from_catalog",
+    "trash_folder_start",
+    "trash_folder_block",
     "remove_companion",
     "restore_companion",
+    "disk_sync_preview",
+    "disk_sync_apply_start",
+    "disk_sync_apply_block",
+    "preview_date_rename",
+    "apply_date_rename",
+    "set_sync_on_start",
+    "set_sync_auto_add",
 
     "remove_files_from_catalog",
+    "start_source_import",
     "start_upload_import",
     "discard_upload",
     "cancel_import",
@@ -100,7 +132,7 @@ pub const WRITE_COMMANDS: &[&str] = &[
 ];
 /// Writes that have their own route instead of an invoke command (a streamed body); they
 /// are audited and replay-protected like a command but never reach `/api/invoke/`.
-pub const ROUTE_WRITES: &[&str] = &["add_companion"];
+pub const ROUTE_WRITES: &[&str] = &["add_companion", "backup_upload", "backup_discard", "backup_restore"];
 /// File operations that act on one companion file and are safe to repeat: the second
 /// request of the same id gets the stored answer instead of "already in the trash".
 pub(crate) fn companion_edit_command(command: &str) -> bool {
@@ -119,6 +151,10 @@ pub(crate) fn image_command(command: &str) -> bool {
 pub(crate) fn body_limit(command: &str) -> usize {
     if image_command(command) {
         katalog_core::write::MAX_CUSTOM_IMAGE_BYTES * 4 / 3 + 16 * 1024
+    } else if command == "disk_sync_preview" {
+        256 * 1024
+    } else if command == "apply_date_rename" {
+        384 * 1024
     } else if WRITE_COMMANDS.contains(&command) {
         16 * 1024
     } else {
@@ -257,7 +293,7 @@ impl WriteProgress {
             format!("completed_items={}",self.completed_items.load(Ordering::Relaxed))
         }else{format!("changes={}",self.changes.load(Ordering::Relaxed))};
         let ids = self.file_ids.lock().unwrap();
-        let detail = if audit.command == "empty_trash_start" {
+        let detail = if audit.command == "empty_trash_start" || audit.command == "trash_folder_start" {
             format!("count={} ids={:?}", ids.len(), &ids[..ids.len().min(10)])
         } else { format!("ids={:?}", *ids) };
         let companions = self.companion_ids.lock().unwrap();
@@ -514,9 +550,12 @@ pub(crate) fn removal_ids(args: &Value) -> Result<Vec<i64>, Box<Response>> {
 }
 /// What a write needs besides the database. Only the rescan reads from disk.
 pub(crate) struct ExecContext {
+    pub source_roots: Vec<std::path::PathBuf>,
     pub db_path: std::path::PathBuf,
     pub roots: Vec<std::path::PathBuf>,
     pub limits: katalog_core::import::files::WebImportLimits,
+    /// Reads STEP metadata in the isolated worker; a disabled one keeps STEP refused.
+    pub step: std::sync::Arc<crate::step_worker::StepWorker>,
 }
 /// Test-only pause between reading the file and the write step, to prove that a slow scan
 /// neither blocks other writers nor can overwrite a file that changed meanwhile. Only files
@@ -526,7 +565,13 @@ pub(crate) mod rescan_hook {
     use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
     pub static HOLD: AtomicBool = AtomicBool::new(false);
     pub static REACHED: AtomicBool = AtomicBool::new(false);
+    /// A fixed delay for files named `slow-*`, standing in for a long STEP read.
+    pub static SLOW_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     pub fn after_parse(path: &std::path::Path) {
+        if path.file_name().is_some_and(|n| n.to_string_lossy().starts_with("slow-")) {
+            std::thread::sleep(std::time::Duration::from_millis(SLOW_MS.load(SeqCst)));
+            return;
+        }
         if !HOLD.load(SeqCst) || !path.file_name().is_some_and(|n| n.to_string_lossy().starts_with("hold-")) {
             return;
         }
@@ -552,11 +597,154 @@ pub(crate) fn prepare_rescan(
         eprintln!("write error_kind=rescan_read_open");
         Box::new(super::web::error_coded(500, ErrorCode::WebServerInternal, &[]))
     })?;
-    let prepared = katalog_core::rescan::prepare_web_rescan(&conn, file_id, &ctx.roots, ctx.limits)
+    let step = |file: &std::fs::File| step_metadata(&ctx.step, file);
+    let reader = ctx.step.available().then_some(&step as katalog_core::rescan::StepReader<'_>);
+    let prepared = katalog_core::rescan::prepare_web_rescan_with(&conn, file_id, &ctx.roots, ctx.limits, reader)
         .map_err(rescan_error)?;
     #[cfg(test)]
     rescan_hook::after_parse(prepared.canonical_path());
     Ok(prepared)
+}
+/// Wall time for one metadata read. With the scan place (1 s), a worker place (3 s) and write
+/// place plus lock (5 s, counted after the read) the rescan answers within the 30 seconds of a
+/// write request.
+const STEP_RESCAN_WALL: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// STEP metadata from the worker. Like the desktop, a file OCCT itself declares unreadable gets
+/// empty metadata and stays in the catalog. A worker that is busy, crashed, broke its protocol, or
+/// ran out of time or memory says nothing about the file, so the rescan stops and the stored
+/// dimensions stay as they are.
+pub(crate) fn step_metadata(
+    step: &crate::step_worker::StepWorker,
+    file: &std::fs::File,
+) -> Result<katalog_core::rescan::StepMetadata, katalog_core::rescan::RescanError> {
+    use crate::step_worker::{Mode, WorkerError as W};
+    use katalog_core::rescan::RescanError;
+    let _slot = step.slot_within(std::time::Duration::from_secs(3)).map_err(|_| RescanError::StepUnavailable)?;
+    match step.run(Mode::Metadata, file, STEP_RESCAN_WALL) {
+        Ok(bytes) => {
+            let meta: crate::step_worker::StepMetadata =
+                serde_json::from_slice(&bytes).map_err(|_| RescanError::Invalid)?;
+            Ok((meta.dimensions_mm, meta.volume_cm3, meta.object_count))
+        }
+        Err(W::NoGeometry | W::Unreadable) => Ok((None, None, None)),
+        Err(W::TooLarge | W::TooComplex) => Err(RescanError::TooLarge),
+        // Most likely a hostile or badly damaged file; refused without touching the record.
+        Err(W::Crashed) => Err(RescanError::Invalid),
+        Err(W::Protocol) => Err(RescanError::Failed("step_worker_protocol".into())),
+        Err(W::Unavailable | W::NoIsolation | W::Busy) => Err(RescanError::StepUnavailable),
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod step_metadata_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    /// A stand-in worker: a shell script that ends the way a real worker might.
+    fn fake_worker(dir: &std::path::Path, name: &str, body: &str) -> crate::step_worker::StepWorker {
+        let exe = dir.join(name);
+        std::fs::write(&exe, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        crate::step_worker::StepWorker::with_exe(exe, crate::step_worker::Limits::default(), 1)
+    }
+
+    fn temp_dir() -> std::path::PathBuf {
+        let mut random = [0u8; 8];
+        getrandom::fill(&mut random).unwrap();
+        let dir = std::env::temp_dir().join(format!("step-metadata-{:x}", u64::from_le_bytes(random)));
+        std::fs::create_dir(&dir).unwrap();
+        dir
+    }
+
+    /// No free descriptor for the worker's copy of the input: that says nothing about the file,
+    /// so the rescan must fail (and leave the record alone) instead of reporting empty metadata.
+    /// Runs in a child copy of the test binary, because the descriptor limit is per process.
+    #[test]
+    fn running_out_of_descriptors_is_not_an_unreadable_file() {
+        const CHILD: &str = "KATALOG_STEP_EMFILE_TEST_CHILD";
+        if let Ok(dir) = std::env::var(CHILD) {
+            let dir = std::path::PathBuf::from(dir);
+            let worker = fake_worker(&dir, "never", "exit 0");
+            let file = std::fs::File::open(dir.join("teil.step")).unwrap();
+            let limit = libc::rlimit { rlim_cur: 64, rlim_max: 64 };
+            // SAFETY: plain syscall with a valid pointer to a local struct.
+            assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &limit) }, 0);
+            let mut hold = Vec::new();
+            while let Ok(f) = std::fs::File::open("/dev/null") {
+                hold.push(f);
+            }
+            assert_eq!(
+                worker.run(crate::step_worker::Mode::Metadata, &file, std::time::Duration::from_secs(5)),
+                Err(crate::step_worker::WorkerError::Protocol)
+            );
+            let result = step_metadata(&worker, &file);
+            drop(hold);
+            assert!(matches!(result, Err(katalog_core::rescan::RescanError::Failed(_))), "{result:?}");
+            return;
+        }
+        let dir = temp_dir();
+        std::fs::write(dir.join("teil.step"), b"ISO-10303-21;\n").unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "write::step_metadata_tests::running_out_of_descriptors_is_not_an_unreadable_file", "--nocapture"])
+            .env(CHILD, &dir)
+            .output()
+            .unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(output.status.success(), "{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+    }
+
+    #[test]
+    fn a_crashed_worker_keeps_the_stored_dimensions() {
+        let dir = temp_dir();
+        let step = dir.join("teil.step");
+        std::fs::write(&step, b"ISO-10303-21;\nEND-ISO-10303-21;\n").unwrap();
+        let db_path = dir.join("catalog.db");
+        let id = {
+            let conn = katalog_core::db::connect(&db_path).unwrap();
+            let id = katalog_core::db::test_insert_minimal_file(&conn, step.to_str().unwrap(), None).unwrap();
+            conn.execute(
+                "UPDATE files SET file_type='stp', dimension_x_mm=10, dimension_y_mm=20, dimension_z_mm=30, volume_cm3=6, object_count=2 WHERE id=?1",
+                [id],
+            )
+            .unwrap();
+            id
+        };
+        let ctx = |worker| ExecContext {
+            source_roots: Vec::new(),
+            db_path: db_path.clone(),
+            roots: vec![dir.clone()],
+            limits: Default::default(),
+            step: std::sync::Arc::new(worker),
+        };
+        let args = serde_json::json!({ "fileId": id.to_string() });
+        let stored = || {
+            let conn = katalog_core::db::connect(&db_path).unwrap();
+            let file = katalog_core::db::get_file(&conn, id).unwrap().unwrap();
+            (file.dimensions_mm, file.object_count)
+        };
+        // Signal, panic exit and an unplanned status all stop the rescan; whatever the caller
+        // would have done with a prepared rescan, the record is not reached.
+        for (name, body) in [("segv", "kill -SEGV $$"), ("panic", "exit 101"), ("odd", "exit 3")] {
+            let worker = fake_worker(&dir, name, body);
+            match prepare_rescan(&args, &ctx(worker)) {
+                Err(response) => assert_eq!(response.status(), 422, "{name}"),
+                Ok(prepared) => {
+                    let mut conn = katalog_core::db::connect(&db_path).unwrap();
+                    let _ = apply_rescan(&mut conn, prepared);
+                }
+            }
+            assert_eq!(stored(), (Some([10.0, 20.0, 30.0]), Some(2)), "{name}");
+        }
+        // The parser's own verdict "cannot read this" is the one case that clears them, as on
+        // the desktop.
+        let unreadable = fake_worker(&dir, "unreadable", &format!("exit {}", crate::step_worker::EXIT_UNREADABLE));
+        let prepared = prepare_rescan(&args, &ctx(unreadable)).unwrap_or_else(|r| panic!("{}", r.status()));
+        let mut conn = katalog_core::db::connect(&db_path).unwrap();
+        apply_rescan(&mut conn, prepared).unwrap_or_else(|r| panic!("{}", r.status()));
+        assert_eq!(stored(), (None, None));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }
 pub(crate) fn apply_rescan(
     c: &mut Connection,
@@ -589,6 +777,27 @@ pub(crate) fn execute(
     _ctx: &ExecContext,
 ) -> Result<(Response, u64), Box<Response>> {
     match cmd {
+        "add_source_folder" | "remove_source_folder" | "reject_source_files"
+        | "reset_rejected_source_files" | "set_source_check_on_start" => {
+            crate::source_dirs::write(c, &_ctx.source_roots, cmd, a)
+                .map(|(value, changes)| (Json(value).into_response(), changes))
+                .map_err(|e| Box::new(crate::source_dirs::response_error(e)))
+        }
+        "set_sync_on_start" | "set_sync_auto_add" => {
+            #[derive(serde::Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct SyncArgs { enabled: bool }
+            let args = SyncArgs::deserialize(a).map_err(|_| bad())?;
+            let key = if cmd == "set_sync_on_start" {
+                katalog_core::disk_sync_settings::SETTING_ON_START
+            } else {
+                katalog_core::disk_sync_settings::SETTING_AUTO_ADD
+            };
+            // Each key stands alone; the interface decides how the two relate (2.11).
+            katalog_core::disk_sync_settings::set_flag(c, key, args.enabled)
+                .map_err(|_| Box::new(super::web::error_coded(500, ErrorCode::WebServerInternal, &[])))?;
+            Ok((Json(Value::Null).into_response(), 1))
+        }
         "set_custom_image" => {
             #[derive(serde::Deserialize)]
             #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -790,6 +999,13 @@ pub(crate) fn execute(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn sync_settings_are_plain_writes_not_file_operations() {
+        // They only store a flag: no plan, budget or backup, and they work without KATALOG_FILE_OPS.
+        for command in ["set_sync_on_start", "set_sync_auto_add"] {
+            assert!(WRITE_COMMANDS.contains(&command) && !FILE_OPS_COMMANDS.contains(&command), "{command}");
+        }
+    }
     #[test]
     fn audit_hash_uses_only_the_authenticated_cookie_name() {
         let mut headers = HeaderMap::new();

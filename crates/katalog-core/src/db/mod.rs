@@ -1,3 +1,4 @@
+pub mod instance_lock;
 pub use repository::{refresh_render_lighting, invalidate_old_render_snapshots, RENDER_LIGHTING_VERSION};
 pub mod error;
 pub mod models;
@@ -32,6 +33,7 @@ pub fn migrations_current_version() -> i64 {
     migrations::CURRENT_SCHEMA_VERSION
 }
 
+pub use repository::set_auto_tag_limit;
 pub use repository::{BACKUP_DIR_NAME, update_filament_spool_image_policy, list_filament_spools_with_image_flags};
 #[cfg(any(test, feature = "test-support"))]
 pub use repository::{list_files_missing_content_hash, set_content_hash};
@@ -45,7 +47,7 @@ pub use repository::{
     insert_filament_spool, insert_folder_with_parent, insert_print_log_entry,
     insert_registered_slicer,
     list_all_file_tags, list_filament_spools, list_filament_spools_with_images, list_file_summaries, list_file_images, list_files,
-    list_files_by_ids, list_folders, list_print_log_entries,
+    list_files_by_ids, list_folders, list_issue_rows, IssueRow, list_print_log_entries,
     list_registered_slicers,
     list_tag_counts,
     list_trash,
@@ -89,6 +91,8 @@ pub use repository::{file_exists_by_hash, file_exists_by_path};
 
 #[cfg(test)]
 pub(crate) mod print_info_tests;
+#[cfg(test)]
+mod auto_tag_tests;
 
 #[cfg(test)]
 mod tests {

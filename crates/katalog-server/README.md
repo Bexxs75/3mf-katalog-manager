@@ -15,8 +15,12 @@ Bei Nicht-Loopback-Bindung `KATALOG_ALLOWED_HOSTS` gegen DNS-Rebinding setzen.
 
 Cookies sind nicht nach Port getrennt. Andere HTTP-Dienste auf demselben Host
 erhalten das Sitzungscookie `katalog_session`; einen eigenen Host-/Domainnamen
-verwenden. Das beim ersten Start ausgegebene Zufallspasswort bleibt dauerhaft
-im Log (etwa `docker logs`) und sollte nach dem ersten Anmelden geändert werden.
+verwenden. Das beim ersten Start erzeugte Zufallspasswort steht nicht im Log,
+sondern in `web-initial-password.txt` neben der Passwortdatei (nur für den
+Besitzer lesbar, Rechte 0600); der Start-Hinweis nennt den Pfad. Nach dem ersten
+Anmelden ändern: Die Datei wird dann entfernt. Kann die Datei nicht angelegt
+werden, bricht die Ersteinrichtung ab, das Passwort wird nie ersatzweise ausgegeben.
+Der Pfad für Downloads und die Übergabe an einen Slicer prüft das Ergebnis von `canonicalize` gegen die Wurzeln und vergleicht Gerät und Inode der geöffneten Datei, öffnet aber nicht Verzeichnis für Verzeichnis mit Verzeichnis-Handles: Ein von einem lokalen Schreiber zwischen Prüfung und Öffnen ausgetauschtes Verzeichnis wird nicht erkannt. Nur vertrauenswürdige lokale Benutzer dürfen in die Wurzeln schreiben (bewusst akzeptierte Grenze, siehe `SECURITY.md`).
 `set-password` liest die Eingabe sichtbar im Terminal. Ein laufender Server
 übernimmt die neue Passwortdatei erst nach einem Neustart.
 

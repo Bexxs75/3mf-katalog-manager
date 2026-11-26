@@ -5,6 +5,116 @@ export const currentVersion = version;
 export interface ReleaseGroups { new: string[]; improved: string[]; fixed: string[] }
 export interface ReleaseNote { date: string; notes: Partial<Record<Language, ReleaseGroups>> & { en: ReleaseGroups } }
 export const releaseNotes: Record<string, ReleaseNote> = {
+  "0.19.0": {
+    "date": "2026-11-26",
+    "notes": {
+      "en": {
+        "new": [
+          "The web version catches up with the desktop app: import from the server's source folders, restoring a backup, printer connection, folder trash, disk comparison and cleanup, tar uploads, Save as STL and the STEP preview in the web image.",
+          "A bundle can hold a single file, and a whole bundle can be moved to another folder (drag it or use Move to).",
+          "Save as STL can also write ASCII STL, and Makerworld files get their source link when imported (only with a purely numeric model ID)."
+        ],
+        "improved": [
+          "Rename, move, trash, folders, companion files, disk comparison and backup restore of the desktop app now run on the same core as the web version; nothing changes visibly.",
+          "The web server is hardened: a password for large removals, quotas, a start password file instead of a log line, and trusted proxies must be listed explicitly.",
+          "Desktop and web refuse concurrent operation on the same catalog."
+        ],
+        "fixed": [
+          "Dragging files out of the catalog into Bambu Studio, OrcaSlicer and editors works on Linux again (known limits: releasing the mouse immediately can still start the drag; a cancel by a GTK3 target can freeze the window).",
+          "The window remembers its size and maximized state (also on GNOME/Wayland), and the tray option is found in the settings search under \"Tray\".",
+          "A narrow sidebar keeps the name of a missing folder readable; the disk comparison labels new folders as folders."
+        ]
+      },
+      "de": {
+        "new": [
+          "Die Web-Version schließt zur Desktop-App auf: Import aus den Quellordnern des Servers, Sicherung einspielen, Druckeranbindung, Ordner-Papierkorb, Festplattenabgleich und Bereinigung, tar-Uploads, „Als STL speichern“ und die STEP-Vorschau im Web-Image.",
+          "Ein Bündel darf eine einzelne Datei enthalten, und ein ganzes Bündel lässt sich in einen anderen Ordner verschieben (ziehen oder „Verschieben nach“).",
+          "„Als STL speichern“ kann auch ASCII-STL schreiben, und Makerworld-Dateien bekommen beim Import ihren Quell-Link (nur bei rein numerischer Modell-ID)."
+        ],
+        "improved": [
+          "Umbenennen, Verschieben, Papierkorb, Ordner, Begleitdateien, Festplattenabgleich und Sicherungs-Wiederherstellung der Desktop-App laufen jetzt auf demselben Kern wie die Web-Version; sichtbar ändert sich nichts.",
+          "Der Web-Server ist gehärtet: Passwort bei großen Entfernungen, Obergrenzen, Startpasswort in einer Datei statt im Log, vertraute Proxys müssen ausdrücklich angegeben werden.",
+          "Desktop und Web verweigern den gleichzeitigen Betrieb auf demselben Katalog."
+        ],
+        "fixed": [
+          "Das Herausziehen von Dateien aus dem Katalog in Bambu Studio, OrcaSlicer und Editoren funktioniert unter Linux wieder (bekannte Grenzen: Loslassen sofort kann den Zug trotzdem starten; ein Abbruch durch ein GTK3-Ziel kann die Oberfläche einfrieren).",
+          "Das Fenster merkt sich Größe und Maximiert-Zustand (auch unter GNOME/Wayland), und die Tray-Option wird in der Einstellungssuche unter „Tray“ gefunden.",
+          "Eine schmale Seitenleiste lässt den Namen eines fehlenden Ordners lesbar; der Abgleich nennt neue Ordner „Ordner“."
+        ]
+      },
+      "es": {
+        "new": [
+          "La versión web se acerca a la aplicación de escritorio: importación desde las carpetas de origen del servidor, restaurar una copia de seguridad, conexión con impresoras, papelera de carpetas, comparación con el disco y limpieza, subidas tar, Guardar como STL y la vista previa STEP en la imagen web.",
+          "Un paquete puede contener un solo archivo y un paquete entero se puede mover a otra carpeta (arrastrarlo o usar Mover a).",
+          "Guardar como STL también puede escribir STL ASCII, y los archivos de Makerworld reciben su enlace de origen al importarlos (solo con un ID de modelo puramente numérico)."
+        ],
+        "improved": [
+          "Renombrar, mover, papelera, carpetas, archivos asociados, comparación con el disco y restauración de copias de la aplicación de escritorio usan ahora el mismo núcleo que la versión web; no cambia nada visible.",
+          "El servidor web está reforzado: contraseña para eliminaciones grandes, límites, contraseña inicial en un archivo en lugar del registro y los proxies de confianza deben indicarse expresamente.",
+          "La aplicación de escritorio y el servidor web impiden el uso simultáneo del mismo catálogo."
+        ],
+        "fixed": [
+          "Arrastrar archivos fuera del catálogo hacia Bambu Studio, OrcaSlicer y editores vuelve a funcionar en Linux (límites conocidos: soltar el ratón de inmediato aún puede iniciar el arrastre; una cancelación por un destino GTK3 puede congelar la ventana).",
+          "La ventana recuerda su tamaño y su estado maximizado (también en GNOME/Wayland), y la opción de la bandeja se encuentra en la búsqueda de ajustes con «Tray».",
+          "Una barra lateral estrecha mantiene legible el nombre de una carpeta que falta; la comparación con el disco llama «carpeta» a las carpetas nuevas."
+        ]
+      },
+      "fr": {
+        "new": [
+          "La version web rattrape l’application de bureau : import depuis les dossiers sources du serveur, restauration d’une sauvegarde, connexion aux imprimantes, corbeille de dossiers, comparaison avec le disque et nettoyage, envois tar, Enregistrer en STL et l’aperçu STEP dans l’image web.",
+          "Un lot peut contenir un seul fichier, et un lot entier peut être déplacé vers un autre dossier (le glisser ou utiliser Déplacer vers).",
+          "Enregistrer en STL peut aussi écrire du STL ASCII, et les fichiers Makerworld reçoivent leur lien source à l’import (uniquement avec un ID de modèle purement numérique)."
+        ],
+        "improved": [
+          "Renommer, déplacer, corbeille, dossiers, fichiers associés, comparaison avec le disque et restauration de sauvegarde de l’application de bureau utilisent désormais le même noyau que la version web ; rien ne change visiblement.",
+          "Le serveur web est renforcé : mot de passe pour les grandes suppressions, limites, mot de passe initial dans un fichier plutôt que dans le journal, et les proxys de confiance doivent être indiqués explicitement.",
+          "L’application de bureau et le serveur web empêchent l’utilisation simultanée du même catalogue."
+        ],
+        "fixed": [
+          "Le glisser de fichiers hors du catalogue vers Bambu Studio, OrcaSlicer et les éditeurs fonctionne de nouveau sous Linux (limites connues : relâcher la souris immédiatement peut quand même lancer le glisser ; une annulation par une cible GTK3 peut figer la fenêtre).",
+          "La fenêtre mémorise sa taille et son état agrandi (aussi sous GNOME/Wayland), et l’option de la zone de notification se trouve dans la recherche des réglages sous « Tray ».",
+          "Une barre latérale étroite garde lisible le nom d’un dossier manquant ; la comparaison avec le disque nomme « dossier » les nouveaux dossiers."
+        ]
+      }
+    }
+  },
+  "0.18.7": {
+    "date": "2026-11-22",
+    "notes": {
+      "en": {
+        "new": [],
+        "improved": [],
+        "fixed": [
+          "Minimize to tray works again: the window stays hidden instead of the app quitting.",
+          "Ctrl+A in the log preview of the problem report selects only the log text."
+        ]
+      },
+      "de": {
+        "new": [],
+        "improved": [],
+        "fixed": [
+          "„In den Tray minimieren“ funktioniert wieder: Das Fenster bleibt versteckt, statt dass die App beendet wird.",
+          "Strg+A in der Protokoll-Vorschau des Problemberichts markiert nur den Protokolltext."
+        ]
+      },
+      "es": {
+        "new": [],
+        "improved": [],
+        "fixed": [
+          "Minimizar a la bandeja funciona de nuevo: la ventana permanece oculta en lugar de cerrar la aplicación.",
+          "Ctrl+A en la vista previa del registro del informe de problemas selecciona solo el texto del registro."
+        ]
+      },
+      "fr": {
+        "new": [],
+        "improved": [],
+        "fixed": [
+          "La réduction dans la zone de notification fonctionne de nouveau : la fenêtre reste masquée au lieu de quitter l'application.",
+          "Ctrl+A dans l'aperçu du journal du rapport de problème ne sélectionne que le texte du journal."
+        ]
+      }
+    }
+  },
   "0.18.6": {
     "date": "2026-11-22",
     "notes": {

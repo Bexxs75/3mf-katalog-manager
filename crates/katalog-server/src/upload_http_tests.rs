@@ -34,8 +34,12 @@ impl Fixture {
         for sub in ["config", "models/uploads", "static"] {
             std::fs::create_dir_all(dir.join(sub)).unwrap();
         }
+        drop(db::connect(&dir.join("config/catalog.db")).unwrap());
+        Self::open(dir, enabled, extra)
+    }
+    /// A server on a folder that exists already, like a start after a restore.
+    fn open(dir: std::path::PathBuf, enabled: bool, extra: &[(&str, &str)]) -> Self {
         let path = dir.join("config/catalog.db");
-        drop(db::connect(&path).unwrap());
         let config = Config::from_lookup(|key| match key {
             _ if extra.iter().any(|(k, _)| *k == key) => {
                 extra.iter().find(|(k, _)| *k == key).map(|(_, v)| (*v).to_owned())
@@ -65,11 +69,21 @@ impl Fixture {
             revision: 0,
         };
         let session = new_session(&mut data, "test", 100).unwrap();
+        let uploads = uploads::initialize(&config).unwrap();
+        let writer = WriteGate::new(db::open_read_write(&path).unwrap());
+        // Only a fixture given KATALOG_FILE_OPS has the file operations (none otherwise).
+        let fileops = crate::fileops_startup::prepare(&config, writer.conn.clone(), uploads.as_ref().map(|u| u.store.clone()))
+            .unwrap()
+            .map(|o| Arc::new(fileops::Runtime::new(o)));
         let app = Arc::new(App {
-            fileops: None,
+            restore: restore_upload::Runtime::default(),
+            events: uploads.as_ref().map(|r| r.hub.clone()).unwrap_or_default(),
+            printers: printer_service::Runtime::default(),
+            _instance_lock: None,
+            fileops,
             fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),
-            uploads: uploads::initialize(&config).unwrap(),
-            writer: Some(WriteGate::new(db::open_read_write(&path).unwrap())),
+            uploads,
+            writer: Some(writer),
             config,
             clock: time.clone(),
             data: Mutex::new(data),
@@ -145,7 +159,7 @@ const MODEL: &[u8] = b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
 #[tokio::test]
 async fn upload_disabled_security_headers_and_authentication() {
     let disabled = Fixture::new(false);
-    for path in ["/api/upload", "/api/uploads", "/api/events"] {
+    for path in ["/api/upload", "/api/uploads"] {
         assert_eq!(
             disabled
                 .send(disabled.request("GET", path, Body::empty()))
@@ -154,6 +168,14 @@ async fn upload_disabled_security_headers_and_authentication() {
             404
         );
     }
+    // The event stream also carries printer events, so it stays available without uploads.
+    assert_eq!(
+        disabled
+            .send(disabled.request("GET", "/api/events", Body::empty()))
+            .await
+            .status(),
+        200
+    );
     let f = Fixture::new(true);
     for (remove, status) in [("cookie", 401), ("x-csrf-token", 403), ("origin", 403)] {
         let mut r = f.upload_request("a.obj", MODEL);
@@ -375,7 +397,9 @@ async fn sse_does_not_refresh_session_and_closes_on_expiration() {
 }
 
 async fn wait_result(f: &Fixture, job: &Value) -> Value {
-    for _ in 0..100 {
+    // Up to 30 seconds: under a fully parallel run of an unoptimised build an import can take
+    // well over one second; the loop ends as soon as the job is done.
+    for _ in 0..3000 {
         let r = f.invoke("get_import_result", json!({"jobId":job})).await;
         assert_eq!(r.status(), 200);
         let result = value(r).await;
@@ -1210,6 +1234,53 @@ fn sevenz_bytes(entries: &[(&str, Vec<u8>)]) -> Vec<u8> {
     writer.push_archive_entries(headers, readers).unwrap();
     writer.finish().unwrap().into_inner()
 }
+/// Hand-written ustar archive, so the tests need no tar library. `kind` is the type flag
+/// (`b'0'` file, `b'2'` symlink, `b'5'` directory); `size` is what the header declares.
+fn tar_bytes(entries: &[(&str, u8, &[u8], &str)]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (name, kind, data, link) in entries {
+        let mut h = [0u8; 512];
+        h[..name.len()].copy_from_slice(name.as_bytes());
+        h[100..108].copy_from_slice(b"0000644\0");
+        h[108..116].copy_from_slice(b"0000000\0");
+        h[116..124].copy_from_slice(b"0000000\0");
+        h[124..136].copy_from_slice(format!("{:011o}\0", data.len()).as_bytes());
+        h[136..148].copy_from_slice(b"00000000000\0");
+        h[148..156].copy_from_slice(b"        ");
+        h[156] = *kind;
+        h[157..157 + link.len()].copy_from_slice(link.as_bytes());
+        h[257..263].copy_from_slice(b"ustar\0");
+        h[263..265].copy_from_slice(b"00");
+        let sum: u32 = h.iter().map(|b| u32::from(*b)).sum();
+        h[148..156].copy_from_slice(format!("{sum:06o}\0 ").as_bytes());
+        out.extend_from_slice(&h);
+        out.extend_from_slice(data);
+        out.resize(out.len().div_ceil(512) * 512, 0);
+    }
+    out.extend_from_slice(&[0u8; 1024]);
+    out
+}
+/// A gzip file made of stored (uncompressed) blocks.
+fn gzip_stored(data: &[u8]) -> Vec<u8> {
+    let mut crc = 0xffff_ffffu32;
+    for b in data {
+        crc ^= u32::from(*b);
+        for _ in 0..8 {
+            crc = if crc & 1 == 1 { (crc >> 1) ^ 0xedb8_8320 } else { crc >> 1 };
+        }
+    }
+    let mut out = vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 255];
+    let mut chunks = data.chunks(65535).peekable();
+    while let Some(chunk) = chunks.next() {
+        out.push(u8::from(chunks.peek().is_none()));
+        out.extend_from_slice(&(chunk.len() as u16).to_le_bytes());
+        out.extend_from_slice(&(!(chunk.len() as u16)).to_le_bytes());
+        out.extend_from_slice(chunk);
+    }
+    out.extend_from_slice(&(!crc).to_le_bytes());
+    out.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    out
+}
 fn upload_names(f: &Fixture) -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(f.dir.join("models/uploads"))
         .unwrap()
@@ -1269,9 +1340,70 @@ async fn solid_7z_with_two_models_and_a_picture_imports_two_and_reports_one_skip
 }
 
 #[tokio::test]
-async fn archive_names_other_than_zip_and_7z_are_refused_with_their_own_code() {
+async fn tar_with_two_models_and_a_picture_imports_two_and_reports_one_skipped() {
     let f = Fixture::new(true);
-    for name in ["x.rar", "x.tar", "x.tar.gz", "x.tgz"] {
+    let bytes = tar_bytes(&[("Modell/", b'5', b"", ""), ("Modell/a.obj", b'0', &obj(1), ""), ("Modell/b.obj", b'0', &obj(2), ""), ("Modell/vorschau.png", b'0', b"\x89PNG....", "")]);
+    let (_, result) = run_archive(&f, "paket.tar", &bytes).await;
+    assert_eq!(result["state"], "completed", "{result}");
+    assert_eq!(archive_row(&result)["models"], 2, "{result}");
+    assert_eq!(archive_row(&result)["skipped"], 1, "{result}");
+    assert_eq!(states(&result, "imported"), 2, "{result}");
+    assert_eq!(std::fs::read(f.dir.join("models/uploads/b.obj")).unwrap(), obj(2));
+}
+
+#[tokio::test]
+async fn a_gzipped_tar_is_unpacked_and_its_signature_is_checked() {
+    let f = Fixture::new(true);
+    let tar = tar_bytes(&[("a.obj", b'0', &obj(1), "")]);
+    let (_, result) = run_archive(&f, "paket.tar.gz", &gzip_stored(&tar)).await;
+    assert_eq!(states(&result, "imported"), 1, "{result}");
+    // A renamed text file or a plain tar under a gzip name never reaches the unpacker.
+    for (name, body) in [("falsch.tar.gz", tar.clone()), ("falsch.tar", b"just text".to_vec()), ("falsch.tgz", b"just text".to_vec())] {
+        let r = f.send(f.upload_request(name, &body)).await;
+        assert_eq!(r.status(), 400, "{name}");
+        assert_eq!(value(r).await["kind"], "invalid_signature", "{name}");
+    }
+}
+
+#[tokio::test]
+async fn tar_paths_that_leave_the_target_and_links_never_end_up_on_disk() {
+    let f = Fixture::new(true);
+    let bytes = tar_bytes(&[
+        ("../entkommen.obj", b'0', &obj(7), ""),
+        ("/abs/absolut.obj", b'0', &obj(8), ""),
+        ("a/../../tief.obj", b'0', &obj(9), ""),
+        ("link.obj", b'2', b"", "/etc/passwd"),
+        ("hart.obj", b'1', b"", "echt.obj"),
+        ("echt.obj", b'0', &obj(1), ""),
+    ]);
+    let (_, result) = run_archive(&f, "falle.tar", &bytes).await;
+    // The extractor skips every unsafe entry (traversal, absolute path, link) and keeps the archive;
+    // only the harmless model becomes an upload.
+    assert_eq!(result["state"], "completed", "{result}");
+    assert_eq!(states(&result, "imported"), 1, "{result}");
+    assert_eq!(upload_names(&f), ["echt.obj", "falle.tar"]);
+    for outside in ["entkommen.obj", "absolut.obj", "tief.obj"] {
+        for base in [f.dir.join("models"), f.dir.clone()] {
+            assert!(!base.join(outside).exists(), "{outside} written to {}", base.display());
+        }
+    }
+    assert!(!std::path::Path::new("/abs/absolut.obj").exists());
+}
+
+#[tokio::test]
+async fn a_tar_that_unpacks_beyond_the_limit_is_refused() {
+    // The tar itself is not compressed, so the upload limit has to admit it.
+    let f = Fixture::with_env(true, &[("KATALOG_ARCHIVE_MAX_MB", "1"), ("KATALOG_UPLOAD_MAX_MB", "8")]);
+    let bomb = tar_bytes(&[("a.obj", b'0', &obj(1), ""), ("nullen.bin", b'0', &vec![0u8; 3 * 1024 * 1024], "")]);
+    let (_, result) = run_archive(&f, "bombe.tar", &bomb).await;
+    assert_eq!(result["files"][0]["kind"], "archive_too_large", "{result}");
+    assert_eq!(upload_names(&f), ["bombe.tar"]);
+}
+
+#[tokio::test]
+async fn rar_names_are_refused_with_their_own_code() {
+    let f = Fixture::new(true);
+    for name in ["x.rar", "X.RAR"] {
         let r = f.send(f.upload_request(name, b"Rar!\x1a\x07\x00")).await;
         assert_eq!(r.status(), 415, "{name}");
         assert_eq!(value(r).await["kind"], "archive_format_unsupported", "{name}");
@@ -1679,4 +1811,190 @@ async fn a_handled_archive_stays_listed_and_can_be_discarded_without_touching_it
     // The imported model keeps working in the catalog.
     let file_id = result["files"].as_array().unwrap().iter().find(|x| x["name"] == "a.obj").unwrap()["fileId"].clone();
     assert!(file_id.is_string());
+}
+
+#[tokio::test]
+async fn maintenance_upload_import_and_upload_readers_use_shared_barrier() {
+    let f = Fixture::new(true);
+    let barrier = &f.app.geometry.barrier;
+    let window = barrier.enter_draining(std::time::Duration::from_secs(1)).await.unwrap();
+    let response = f.invoke("start_upload_import", json!({"uploadIds":["unused"]})).await;
+    assert_eq!(response.status(), 503);
+    let bytes = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+    assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap()["message"], "maintenance");
+    assert_eq!(f.send(f.request("GET", "/api/uploads", Body::empty())).await.status(), 200);
+    let window = window.enter_exclusive(std::time::Duration::from_secs(1)).await.unwrap();
+    assert_eq!(f.send(f.request("GET", "/api/uploads", Body::empty())).await.status(), 503);
+    window.release();
+}
+
+#[tokio::test]
+async fn maintenance_drains_import_worker_through_cancellation_and_reconciliation() {
+    let f = Fixture::new(true);
+    let upload = f.upload("pending.obj", MODEL).await;
+    let conn = f.app.writer.as_ref().unwrap().conn.clone();
+    let (locked, ready) = tokio::sync::oneshot::channel();
+    let (unlock, released) = std::sync::mpsc::channel();
+    let holder = std::thread::spawn(move || {
+        let _conn = conn.lock().unwrap();
+        locked.send(()).unwrap();
+        released.recv().unwrap();
+    });
+    ready.await.unwrap();
+    let response = f.invoke("start_upload_import", json!({"uploadIds":[upload["uploadId"]]})).await;
+    assert_eq!(response.status(), 200);
+    let job = value(response).await;
+    let barrier = &f.app.geometry.barrier;
+    assert_eq!(barrier.snapshot().writers, 1);
+    let window = barrier.enter_draining(std::time::Duration::from_secs(2)).await.unwrap();
+    assert_eq!(barrier.snapshot().writers, 0);
+    unlock.send(()).unwrap();
+    holder.join().unwrap();
+    let result = value(f.invoke("get_import_state", json!({"jobId":job["jobId"]})).await).await;
+    assert_eq!(result["state"], "cancelled");
+    let conn = db::open_read_only(&f.app.config.db_path).unwrap();
+    assert_eq!(conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    window.release();
+}
+
+fn source_catalog_count(f: &Fixture) -> i64 {
+    let conn = db::open_read_only(&f.app.config.db_path).unwrap();
+    conn.query_row("SELECT count(*) FROM files", [], |row| row.get(0)).unwrap()
+}
+
+fn source_fixture(in_place: bool) -> Fixture {
+    let mut f = Fixture::new(true);
+    let root = f.dir.join(if in_place { "models/source" } else { "source" });
+    std::fs::create_dir(&root).unwrap();
+    std::fs::write(root.join("source.obj"), MODEL).unwrap();
+    Arc::get_mut(&mut f.app).unwrap().config.source_roots = vec![root];
+    f
+}
+
+#[tokio::test]
+async fn source_import_http_copies_byte_equal_and_imports_in_place() {
+    for in_place in [false, true] {
+        let f = source_fixture(in_place);
+        let source = f.app.config.source_roots[0].join("source.obj");
+        let response = f.invoke("start_source_import", json!({"rootIdx":0,"rel":""})).await;
+        assert_eq!(response.status(), 200);
+        let id = value(response).await["jobId"].clone();
+        let result = wait_result(&f, &id).await;
+        assert_eq!(result["state"], "completed", "{result}");
+        assert_eq!(result["files"][0]["state"], "imported", "{result}");
+        assert_eq!(std::fs::read(&source).unwrap(), MODEL);
+        assert_eq!(source_catalog_count(&f), 1);
+        assert_eq!(f.dir.join("models/source.obj").exists(), !in_place);
+        assert!(!result.to_string().contains(&f.dir.to_string_lossy().to_string()));
+    }
+}
+
+#[tokio::test]
+async fn source_import_http_rejects_paths_links_and_replaced_root() {
+    let f = source_fixture(false);
+    let root = &f.app.config.source_roots[0];
+    std::os::unix::fs::symlink("/proc", root.join("proc")).unwrap();
+    std::os::unix::fs::symlink(f.dir.join("models"), root.join("outside")).unwrap();
+    for (idx, rel) in [(0, ".."), (0, "/etc"), (7, "")] {
+        let response = f.invoke("start_source_import", json!({"rootIdx":idx,"rel":rel})).await;
+        assert_eq!(response.status(), 400, "{rel}");
+        assert_eq!(value(response).await["message"], "sourceRootNotAllowed");
+        assert_eq!(source_catalog_count(&f), 0);
+    }
+    for rel in ["proc", "outside"] {
+        let start = value(f.invoke("start_source_import", json!({"rootIdx":0,"rel":rel})).await).await;
+        let result = wait_result(&f, &start["jobId"]).await;
+        assert_eq!(result["state"], "failed");
+        assert_eq!(source_catalog_count(&f), 0);
+    }
+    std::fs::rename(root, f.dir.join("old-source")).unwrap();
+    std::os::unix::fs::symlink(f.dir.join("old-source"), root).unwrap();
+    let start = value(f.invoke("start_source_import", json!({"rootIdx":0})).await).await;
+    assert_eq!(wait_result(&f, &start["jobId"]).await["state"], "failed");
+    assert_eq!(std::fs::read(f.dir.join("old-source/source.obj")).unwrap(), MODEL);
+}
+
+#[tokio::test]
+async fn source_import_http_obeys_import_gate_and_authentication() {
+    let f = source_fixture(false);
+    let permit = f.app.uploads.as_ref().unwrap().active.clone().try_acquire_owned().unwrap();
+    assert_eq!(f.invoke("start_source_import", json!({"rootIdx":0})).await.status(), 503);
+    drop(permit);
+    let mut request = f.request("POST", "/api/invoke/start_source_import", Body::from(r#"{"rootIdx":0}"#));
+    request.headers_mut().remove("cookie");
+    assert_eq!(router(f.app.clone()).oneshot(request).await.unwrap().status(), 401);
+    assert_eq!(source_catalog_count(&f), 0);
+}
+
+#[tokio::test]
+async fn source_import_http_rejects_start_during_streaming_upload() {
+    let f = source_fixture(false);
+    let (tx, rx) = tokio::sync::mpsc::channel(2);
+    let waiting = Arc::new(AtomicU64::new(0));
+    let mut request = f.upload_request("stream.obj", MODEL);
+    *request.body_mut() = Body::new(ObservedBody { rx, waiting: waiting.clone() });
+    let app = f.app.clone();
+    let task = tokio::spawn(async move { router(app).oneshot(request).await.unwrap() });
+    wait_for_body_poll(&waiting, 0).await;
+    assert_eq!(f.invoke("start_source_import", json!({"rootIdx":0})).await.status(), 503);
+    tx.send(Ok(axum::body::Bytes::from_static(MODEL))).await.unwrap();
+    drop(tx);
+    assert_eq!(task.await.unwrap().status(), 200);
+    let start = value(f.invoke("start_source_import", json!({"rootIdx":0})).await).await;
+    assert_eq!(wait_result(&f, &start["jobId"]).await["state"], "completed");
+}
+
+#[tokio::test]
+async fn source_import_http_cancel_keeps_source_and_releases_worker_guard() {
+    let f = source_fixture(false);
+    let conn = f.app.writer.as_ref().unwrap().conn.clone();
+    let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let holder = std::thread::spawn(move || {
+        let _lock = conn.lock().unwrap();
+        locked_tx.send(()).unwrap();
+        release_rx.recv().unwrap();
+    });
+    locked_rx.recv().unwrap();
+    let start = value(f.invoke("start_source_import", json!({"rootIdx":0})).await).await;
+    let target = f.dir.join("models/source.obj");
+    for _ in 0..100 {
+        if target.exists() { break; }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!(target.exists());
+    assert!(f.app.geometry.barrier.snapshot().writers > 0);
+    assert_eq!(f.send(f.upload_request("blocked.obj", MODEL)).await.status(), 503);
+    assert_eq!(f.invoke("cancel_import", json!({"jobId":start["jobId"]})).await.status(), 200);
+    release_tx.send(()).unwrap();
+    holder.join().unwrap();
+    assert_eq!(wait_result(&f, &start["jobId"]).await["state"], "cancelled");
+    assert!(!target.exists());
+    assert_eq!(std::fs::read(f.dir.join("source/source.obj")).unwrap(), MODEL);
+    assert_eq!(source_catalog_count(&f), 0);
+    assert_eq!(f.app.geometry.barrier.snapshot().writers, 0);
+}
+
+#[tokio::test]
+async fn source_import_http_target_folder_and_collision_preserve_existing_bytes() {
+    let f = source_fixture(false);
+    let target = f.dir.join("models/selected");
+    std::fs::create_dir(&target).unwrap();
+    std::fs::write(target.join("source.obj"), b"existing").unwrap();
+    let folder_id = {
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        db::ensure_folder_path(&conn, &f.dir.join("models"), &target).unwrap()
+    };
+    let start = value(f.invoke("start_source_import", json!({
+        "rootIdx":0,"targetFolderId":folder_id.to_string()
+    })).await).await;
+    let result = wait_result(&f, &start["jobId"]).await;
+    assert_eq!(result["state"], "completed", "{result}");
+    assert_eq!(std::fs::read(target.join("source.obj")).unwrap(), b"existing");
+    assert_eq!(std::fs::read(target.join("source (1).obj")).unwrap(), MODEL);
+    assert_eq!(source_catalog_count(&f), 1);
+}
+
+mod hash_backfill_http_tests {
+    include!("hash_backfill_http_tests.rs");
 }

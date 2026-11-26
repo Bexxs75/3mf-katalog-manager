@@ -16,6 +16,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { decodeModelGeometry } from '../lib/parseModelGeometry';
 import type { ParsedMesh, GeometryColor, GeometryPlate } from '../lib/parseModelGeometry';
 import { toAppError, type AppError } from '../lib/errors';
+import { hasStepPreview } from '../lib/api/stepPreview';
 import { ViewerErrorCard, type ViewerActions } from './ViewerErrorCard';
 import { createViewerFloor, gridColor } from '../lib/viewerFloor';
 
@@ -356,17 +357,16 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, externalSourc
     ctx.colorMaterials.forEach(m => m.dispose());
     ctx.colorMaterials = [];
 
-    // The web server never renders STEP (its `has_step_preview` is constant false), so the
-    // request could only end in a 422 and a console error; show the explanation directly.
-    if (import.meta.env.VITE_TARGET === 'web' && model && isStepFilePath(model.path)) {
-      setStatus('error');
-      setError({ message: 'unsupported', code: 'unsupported', unexpected: false });
-      reportError();
-      return () => { cancelled = true; clearTimeout(errorTimer); ctx.renderer.domElement.removeEventListener('webglcontextlost', handleContextLost); };
-    }
     // The attempt marker belongs to cataloged files (it tells the snapshot queue which previews crashed).
     const finishAttempt = externalSourceId ? () => {} : beginPreviewAttempt(fileId);
-    (externalSourceId ? invoke<ArrayBuffer>('get_external_geometry', { sourceId: externalSourceId }) : invoke<ArrayBuffer>('get_model_geometry', { fileId }))
+    const fetchGeometry = () => externalSourceId ? invoke<ArrayBuffer>('get_external_geometry', { sourceId: externalSourceId }) : invoke<ArrayBuffer>('get_model_geometry', { fileId });
+    // A web server renders STEP only when it was built with the preview. Without it the request could
+    // only end in an error and a console message, so ask first and show the explanation directly.
+    const stepUnavailable = new Error('step preview unavailable');
+    const webStepFile = import.meta.env.VITE_TARGET === 'web' && model && isStepFilePath(model.path);
+    (webStepFile
+      ? hasStepPreview().catch(() => false).then(available => { if (!available) throw stepUnavailable; return fetchGeometry(); })
+      : fetchGeometry())
       .then((buffer) => {
         if (cancelled || contextLost) { finishAttempt(); return; }
         const { meshes, palette, plates, colorsUnresolved, paintSimplified } = decodeModelGeometry(buffer);
@@ -435,10 +435,10 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, externalSourc
       })
       .catch((err) => {
         finishAttempt();
-        console.error('[ModelViewer] loading failed:', err);
+        if (err !== stepUnavailable) console.error('[ModelViewer] loading failed:', err);
         if (!cancelled && !contextLost) {
           setStatus('error');
-          setError(toAppError(err));
+          setError(err === stepUnavailable ? { message: 'unsupported', code: 'unsupported', unexpected: false } : toAppError(err));
           reportError();
         }
       });

@@ -20,10 +20,14 @@ use std::{
 };
 use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
 
+#[path = "uploads/source_import.rs"]
+mod source_import;
+
 pub(super) fn command(name: &str) -> bool {
     matches!(
         name,
         "start_upload_import"
+            | "start_source_import"
             | "discard_upload"
             | "cancel_import"
             | "get_import_state"
@@ -32,7 +36,7 @@ pub(super) fn command(name: &str) -> bool {
 }
 fn fail(e: StoreError) -> Response {
     let message = match e.kind {
-        "archive_format_unsupported" => "Archivformat nicht unterstützt (nur ZIP und 7z)",
+        "archive_format_unsupported" => "Archivformat nicht unterstützt (ZIP, 7z und tar; RAR nur in der Desktop-App)",
         "archive_too_many_models" => "Archiv enthält zu viele Modelle",
         "archive_memory_limit" => "Archiv braucht zu viel Arbeitsspeicher beim Entpacken",
         "archive_timeout" => "Entpacken dauert zu lange",
@@ -79,6 +83,9 @@ struct JobView {
     done: usize,
     files: Vec<FileResult>,
     kind: Option<String>,
+    // Lets the browser tell a folder copy from an upload import: both share this job record and event stream.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    source: bool,
 }
 struct Job {
     view: Mutex<JobView>,
@@ -98,7 +105,7 @@ impl Event {
     }
 }
 #[derive(Default)]
-struct Hub {
+pub(super) struct Hub {
     sequence: u64,
     clients: HashMap<u64, mpsc::Sender<Bytes>>,
     session_counts: HashMap<String, usize>,
@@ -113,7 +120,7 @@ impl Hub {
         }
         .bytes()
     }
-    fn publish(&mut self, name: &'static str, value: Value) {
+    pub(super) fn publish(&mut self, name: &'static str, value: Value) {
         let bytes = self.event(name, value);
         self.clients
             .retain(|_, tx| tx.try_send(bytes.clone()).is_ok());
@@ -123,7 +130,7 @@ pub(super) struct Runtime {
     pub store: Arc<UploadStore>,
     pub(super) active: Arc<Semaphore>,
     jobs: Mutex<HashMap<String, Arc<Job>>>,
-    hub: Mutex<Hub>,
+    pub(super) hub: Arc<Mutex<Hub>>,
 }
 impl Runtime {
     async fn changed(self: &Arc<Self>) {
@@ -205,7 +212,7 @@ pub(super) fn initialize(config: &Config) -> Result<Option<Arc<Runtime>>, String
         store,
         active: Arc::new(Semaphore::new(1)),
         jobs: Mutex::new(HashMap::new()),
-        hub: Mutex::new(Hub::default()),
+        hub: Arc::default(),
     })))
 }
 /// Runs only after fsops recovery and upload detachment have completed.
@@ -237,6 +244,9 @@ fn rate(app: &App, s: &Session) -> Result<(), Response> {
     Ok(())
 }
 pub(super) async fn upload(app: Arc<App>, session: Session, req: Request) -> Response {
+    let catalog_guard = match app.geometry.barrier.writer() {
+        Ok(g) => Arc::new(g), Err(_) => return crate::barrier::maintenance(),
+    };
     if let Err(r) = rate(&app, &session) {
         return r;
     }
@@ -289,8 +299,12 @@ pub(super) async fn upload(app: Arc<App>, session: Session, req: Request) -> Res
         .unwrap()
         .limits
         .max_mesh_file_bytes;
+    let held = catalog_guard.clone();
     let mut pending =
-        match tokio::task::spawn_blocking(move || store.begin_limited(length, &name, mesh_limit))
+        match tokio::task::spawn_blocking(move || {
+            let _held = held;
+            store.begin_limited(length, &name, mesh_limit)
+        })
             .await
         {
             Ok(Ok(p)) => p,
@@ -321,7 +335,9 @@ pub(super) async fn upload(app: Arc<App>, session: Session, req: Request) -> Res
             progress = 0;
             idle = tokio::time::Instant::now() + Duration::from_secs(60)
         }
+        let held = catalog_guard.clone();
         pending = match tokio::task::spawn_blocking(move || {
+            let _held = held;
             let result = pending.write(&chunk);
             (pending, result)
         })
@@ -332,7 +348,11 @@ pub(super) async fn upload(app: Arc<App>, session: Session, req: Request) -> Res
             Err(_) => return error(500, "upload_internal"),
         };
     }
-    pending = match tokio::task::spawn_blocking(move || pending.prepare().map(|()| pending)).await {
+    let held = catalog_guard.clone();
+    pending = match tokio::task::spawn_blocking(move || {
+        let _held = held;
+        pending.prepare().map(|()| pending)
+    }).await {
         Ok(Ok(p)) => p,
         Ok(Err(e)) => return fail(e),
         Err(_) => return error(500, "upload_internal"),
@@ -342,6 +362,7 @@ pub(super) async fn upload(app: Arc<App>, session: Session, req: Request) -> Res
     let change = app.changes.clone().lock_owned().await;
     let finish_app = app.clone();
     let response = tokio::task::spawn_blocking(move || {
+        let _catalog_guard = catalog_guard;
         // Keep logout serialized even if the HTTP future is cancelled.
         let _change = change;
         let mut data = finish_app.data.lock().unwrap();
@@ -404,12 +425,17 @@ pub(super) async fn invoke(
     args: Value,
 ) -> Response {
     let rt = app.uploads.as_ref().unwrap().clone();
-    if matches!(command, "start_upload_import" | "discard_upload") {
+    if matches!(command, "start_upload_import" | "start_source_import" | "discard_upload") {
         if let Err(r) = rate(&app, &session) {
             return r;
         }
     }
+    // Restored rows without a hash would let every known file pass as new.
+    if matches!(command, "start_upload_import" | "start_source_import") && app.geometry.hash_backfill.pending() {
+        return crate::web::error_coded(409, katalog_core::error_code::ErrorCode::CatalogHashCheckPending, &[]);
+    }
     match command {
+        "start_source_import" => source_import::start(app, session, args).await,
         "discard_upload" => {
             let _change = app.changes.lock().await;
             if !authenticated(&app, &session) {
@@ -418,9 +444,12 @@ pub(super) async fn invoke(
             let Ok(arg) = serde_json::from_value::<UploadId>(args) else {
                 return error(400, "arguments");
             };
+            let catalog_guard = match app.geometry.barrier.writer() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
             let copy = rt.clone();
-            let result =
-                tokio::task::spawn_blocking(move || copy.store.discard(&arg.upload_id)).await;
+            let result = tokio::task::spawn_blocking(move || {
+                let _catalog_guard = catalog_guard;
+                copy.store.discard(&arg.upload_id)
+            }).await;
             rt.changed().await;
             match result {
                 Ok(Ok(())) => Json(json!({"ok":true})).into_response(),
@@ -429,6 +458,7 @@ pub(super) async fn invoke(
             }
         }
         "start_upload_import" => {
+            let catalog_guard = match app.geometry.barrier.writer() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
             let _change = app.changes.lock().await;
             if !authenticated(&app, &session) {
                 return error(401, "session_expired");
@@ -497,16 +527,21 @@ pub(super) async fn invoke(
                     done: 0,
                     files: Vec::new(),
                     kind: None,
+                    source: false,
                 }),
                 cancel: AtomicBool::new(false),
             });
             rt.jobs.lock().unwrap().insert(id.clone(), job.clone());
             rt.publish(&job, false);
             let worker_app = app.clone();
-            tokio::task::spawn_blocking(move || run_job(worker_app, rt, job, entries, permit));
+            tokio::task::spawn_blocking(move || {
+                let _catalog_guard = catalog_guard;
+                run_job(worker_app, rt, job, entries, permit)
+            });
             Json(json!({"jobId":id})).into_response()
         }
         "get_import_state" | "get_import_result" | "cancel_import" => {
+            let catalog_guard = match app.geometry.barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
             let Ok(arg) = serde_json::from_value::<JobId>(args) else {
                 return error(400, "arguments");
             };
@@ -524,7 +559,10 @@ pub(super) async fn invoke(
                 return Json(serde_json::to_value(&*job.view.lock().unwrap()).unwrap())
                     .into_response();
             }
-            match tokio::task::spawn_blocking(move || rt.store.job_result(&arg.job_id)).await {
+            match tokio::task::spawn_blocking(move || {
+                let _catalog_guard = catalog_guard;
+                rt.store.job_result(&arg.job_id)
+            }).await {
                 Ok(Ok(Some(v))) => Json(v).into_response(),
                 Ok(Ok(None)) => error(404, "job_not_found"),
                 Ok(Err(e)) => fail(e),
@@ -565,6 +603,9 @@ impl ImportDb for Database<'_> {
     ) -> ImportResult<R> {
         // Never keep a DB mutex while parsing, journalling, or waiting for clients.
         loop {
+            if self.app.geometry.barrier.snapshot().state != crate::barrier::State::Open {
+                self.cancel.store(true, Ordering::Release);
+            }
             if self.cancel.load(Ordering::Acquire) {
                 return Err("cancelled".into());
             }
@@ -720,6 +761,9 @@ fn expand_archives(app: &App, rt: &Arc<Runtime>, job: &Job, entries: &mut Vec<En
     let upload = app.config.upload.as_ref().unwrap();
     let job_id = job.view.lock().unwrap().job_id.clone();
     for archive in archives {
+        if app.geometry.barrier.snapshot().state != crate::barrier::State::Open {
+            job.cancel.store(true, Ordering::Release);
+        }
         if job.cancel.load(Ordering::Acquire) {
             break;
         }
@@ -803,6 +847,9 @@ fn run_inner(app: &App, rt: &Arc<Runtime>, job: &Job, entries: &mut Vec<Entry>) 
         .filter(|e| !crate::upload_store::is_archive_name(&e.name))
         .enumerate()
     {
+        if app.geometry.barrier.snapshot().state != crate::barrier::State::Open {
+            job.cancel.store(true, Ordering::Release);
+        }
         if job.cancel.load(Ordering::Acquire) {
             break;
         }
@@ -940,13 +987,13 @@ fn flush(
     outcome.map_err(|_| ())
 }
 struct StreamGuard {
-    rt: Arc<Runtime>,
+    hub: Arc<Mutex<Hub>>,
     id: u64,
     session: String,
 }
 impl Drop for StreamGuard {
     fn drop(&mut self) {
-        let mut hub = self.rt.hub.lock().unwrap();
+        let mut hub = self.hub.lock().unwrap();
         hub.clients.remove(&self.id);
         if let Some(n) = hub.session_counts.get_mut(&self.session) {
             *n -= 1;
@@ -990,21 +1037,25 @@ pub(super) async fn events(app: Arc<App>, session: Session, headers: &HeaderMap)
     if !events_origin_ok(&app, headers) {
         return error(403, "origin");
     }
-    let rt = app.uploads.as_ref().unwrap().clone();
+    let rt = app.uploads.clone();
+    let hub = app.events.clone();
     let (tx, rx) = mpsc::channel(32);
     let copy = rt.clone();
+    let shared_hub = hub.clone();
     let token = session.token.clone();
     let snapshot_tx = tx.clone();
+    let catalog_guard = match app.geometry.barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     let guard = match tokio::task::spawn_blocking(move || {
+        let _catalog_guard = catalog_guard;
         let rt = copy;
         let tx = snapshot_tx;
         // Never hold the hub while waiting on journal fsync. Retry if a
         // publication raced the snapshot; subscribe under the same hub lock.
         let (mut jobs, uploads, mut hub) = loop {
-            let sequence = rt.hub.lock().unwrap().sequence;
-            let jobs = rt.store.recent_job_results().unwrap_or_default();
-            let uploads = pending_entries(&rt.store);
-            let hub = rt.hub.lock().unwrap();
+            let sequence = shared_hub.lock().unwrap().sequence;
+            let jobs = rt.as_ref().map(|r| r.store.recent_job_results().unwrap_or_default()).unwrap_or_default();
+            let uploads = rt.as_ref().map(|r| pending_entries(&r.store)).unwrap_or_default();
+            let hub = shared_hub.lock().unwrap();
             if hub.sequence == sequence {
                 break (jobs, uploads, hub);
             }
@@ -1017,20 +1068,22 @@ pub(super) async fn events(app: Arc<App>, session: Session, headers: &HeaderMap)
         }
         // Publish and snapshot use this lock: updates that race the snapshot are
         // repeated after it, never lost between observation and subscription.
-        let active_ids: std::collections::HashSet<_> =
-            rt.jobs.lock().unwrap().keys().cloned().collect();
-        jobs.retain(|v| {
-            v["jobId"]
-                .as_str()
-                .is_none_or(|id| !active_ids.contains(id))
-        });
-        jobs.extend(
-            rt.jobs
-                .lock()
-                .unwrap()
-                .values()
-                .map(|j| serde_json::to_value(&*j.view.lock().unwrap()).unwrap()),
-        );
+        if let Some(rt) = &rt {
+            let active_ids: std::collections::HashSet<_> =
+                rt.jobs.lock().unwrap().keys().cloned().collect();
+            jobs.retain(|v| {
+                v["jobId"]
+                    .as_str()
+                    .is_none_or(|id| !active_ids.contains(id))
+            });
+            jobs.extend(
+                rt.jobs
+                    .lock()
+                    .unwrap()
+                    .values()
+                    .map(|j| serde_json::to_value(&*j.view.lock().unwrap()).unwrap()),
+            );
+        }
         let snapshot = hub.event(
             "import-progress",
             json!({"snapshot":true,"jobs":jobs,"uploads":uploads}),
@@ -1040,7 +1093,7 @@ pub(super) async fn events(app: Arc<App>, session: Session, headers: &HeaderMap)
         hub.clients.insert(id, tx.clone());
         *hub.session_counts.entry(token.clone()).or_default() += 1;
         Ok(StreamGuard {
-            rt: rt.clone(),
+            hub: shared_hub.clone(),
             id,
             session: token,
         })
@@ -1060,12 +1113,12 @@ pub(super) async fn events(app: Arc<App>, session: Session, headers: &HeaderMap)
         loop {
             tokio::select! {_ = tx.closed()=>break,_=interval.tick()=>{
                 if !authenticated(&app,&session){break}
-                let mut hub=rt.hub.lock().unwrap();
+                let mut hub=hub.lock().unwrap();
                 if !hub.clients.contains_key(&id){break}
                 let ping=hub.event("ping",json!({}));if tx.try_send(ping).is_err(){break}
             }}
         }
-        rt.hub.lock().unwrap().clients.remove(&id);
+        hub.lock().unwrap().clients.remove(&id);
     });
     let mut response = Response::new(Body::new(EventBody { rx, _guard: guard }));
     response
@@ -1076,8 +1129,12 @@ pub(super) async fn events(app: Arc<App>, session: Session, headers: &HeaderMap)
         .insert("x-accel-buffering", "no".parse().unwrap());
     response
 }
-pub(super) async fn list(rt: Arc<Runtime>) -> Response {
-    tokio::task::spawn_blocking(move || Json(public_entries(&rt.store)).into_response())
+pub(super) async fn list(rt: Arc<Runtime>, barrier: &crate::barrier::CatalogBarrier) -> Response {
+    let catalog_guard = match barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
+    tokio::task::spawn_blocking(move || {
+        let _catalog_guard = catalog_guard;
+        Json(public_entries(&rt.store)).into_response()
+    })
         .await
         .unwrap_or_else(|_| error(500, "journal"))
 }

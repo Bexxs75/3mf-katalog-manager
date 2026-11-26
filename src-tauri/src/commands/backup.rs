@@ -1,38 +1,8 @@
 use super::*;
 
-// Restoring existing names must preserve legal host-platform names; only path
-// components that could escape a joined directory are unsafe here.
-fn validate_file_name(name: &str) -> CmdResult<()> {
-    let mut components = Path::new(name).components();
-    if name.trim().is_empty() || name.contains(['/', '\\']) || name.chars().any(char::is_control)
-        || !matches!((components.next(), components.next()), (Some(std::path::Component::Normal(_)), None)) {
-        return Err(CmdError::coded(ErrorCode::BackupEntryNameInvalid));
-    }
-    #[cfg(windows)]
-    {
-        let stem = name.split('.').next().unwrap_or(name).trim_end().to_uppercase();
-        if name.contains(':') || folders::WINDOWS_RESERVED_NAMES.contains(&stem.as_str()) {
-            return Err(CmdError::coded(ErrorCode::BackupEntryNameUnsafeOnWindows));
-        }
-    }
-    Ok(())
-}
+use katalog_core::catalog_restore::{self, StdRestoreFs, TrashPolicy};
 
 pub(super) use imported_paths::validate_path as validate_imported_local_path;
-
-fn sanitize_imported_file_identity(conn: &Connection) -> Result<(), String> {
-    // Duplicate decisions need local hashes; import dates retain the catalog history.
-    conn.execute("UPDATE files SET content_hash = NULL", [])
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-fn validate_imported_path_length(path: &str, known_folders: &[String]) -> Result<(), String> {
-    if path.chars().take(4097).count() > 4096 {
-        return Err("Importierter Pfad darf höchstens 4096 Zeichen enthalten".into());
-    }
-    validate_imported_local_path(path, known_folders)
-}
 
 /// Exports the complete catalog state (DB + frontend settings) as a ZIP file.
 /// Uses SQLite's online backup API instead of copying the raw file: the live
@@ -85,23 +55,12 @@ fn write_catalog_backup(db: &std::sync::Mutex<Connection>, dest: &Path, settings
             crate::safe_file::harden_permissions(&backup_db_path);
 
             let conn = db.lock().map_err(|_| CmdError::from("database lock poisoned"))?;
-            let mut dst = Connection::open(&backup_db_path).map_err(|e| e.to_string())?;
-            {
-                let backup =
-                    rusqlite::backup::Backup::new(&conn, &mut dst).map_err(|e| e.to_string())?;
-                // One step for the whole database: `run_to_completion` sleeps after
-                // every step that isn't the last, while the catalog lock (and with it
-                // every synchronous command of the UI) waits - see updater/backup.rs.
-                backup
-                    .run_to_completion(i32::MAX, std::time::Duration::from_millis(250), None)
-                    .map_err(|e| e.to_string())?;
-            }
-            // The ZIP is meant to be kept and passed on: no API keys in the copy.
-            db::scrub_secrets(&dst).map_err(|e| e.to_string())?;
+            // One step for the whole database, scrubbed of API keys: the ZIP is meant to be
+            // kept and passed on (see `katalog_core::catalog_export::snapshot`).
+            katalog_core::catalog_export::snapshot(&conn, &backup_db_path)?;
         }
 
-        let db_bytes = std::fs::read(&backup_db_path).map_err(|e| e.to_string())?;
-        write_zip_atomically(dest, &[("catalog.db", &db_bytes), ("settings.json", settings_json.as_bytes())])
+        katalog_core::catalog_export::write_zip_atomically(&backup_db_path, settings_json, dest)
             .map_err(|e| e.to_string())?;
         Ok(())
     })();
@@ -110,31 +69,6 @@ fn write_catalog_backup(db: &std::sync::Mutex<Connection>, dest: &Path, settings
     result
 }
 
-/// Writes a ZIP with `entries` to `dest` via a private temp file next to it and
-/// renames it into place only when complete: never a partial archive at the
-/// destination. The temp name is unpredictable and created exclusively, so a
-/// symlink planted under a guessable name can't redirect the write.
-fn write_zip_atomically(dest: &Path, entries: &[(&str, &[u8])]) -> std::io::Result<()> {
-    use std::io::Write;
-    let parent = dest.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
-    let base = dest.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let (tmp_path, file) = crate::safe_file::create_private_temp(parent, &format!(".{base}"), ".tmp")?;
-
-    let written = (|| {
-        let mut zip = zip::ZipWriter::new(file);
-        let options = zip::write::SimpleFileOptions::default();
-        for (name, bytes) in entries {
-            zip.start_file(*name, options).map_err(std::io::Error::other)?;
-            zip.write_all(bytes)?;
-        }
-        zip.finish().map_err(std::io::Error::other)?.sync_all()?;
-        std::fs::rename(&tmp_path, dest)
-    })();
-    if written.is_err() {
-        let _ = std::fs::remove_file(&tmp_path);
-    }
-    written
-}
 /// Writes `bytes` exclusively (`create_new`) to `path` and sets 0600.
 /// `fs::write` would follow a pre-planted symlink in a shared `/tmp` and create
 /// the file with umask permissions (often world-readable) (CWE-377, TOCTOU).
@@ -146,1196 +80,65 @@ fn write_temp_file_exclusive(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     crate::safe_file::harden_permissions(path);
     Ok(())
 }
-/// Limits against zip bombs on import.
-const MAX_IMPORT_DB_BYTES: u64 = 256 * 1024 * 1024;
-const MAX_IMPORT_SETTINGS_BYTES: u64 = 1024 * 1024;
-
-/// The declared size can lie; the hard limit is `Read::take` while reading.
-/// This check only saves the read attempt for honestly oversized entries. An
-/// oversized entry is about the archive the user picked, not a fault here.
-fn reject_oversized_zip_entry(name: &str, size: u64, max: u64) -> CmdResult<()> {
-    if size > max {
-        // Whole megabytes, rounded up: a decimal separator would need the user's locale.
-        return Err(CmdError::coded_with(
-            ErrorCode::BackupEntryTooLarge,
-            [name.to_string(), size.div_ceil(1024 * 1024).to_string(), (max / (1024 * 1024)).to_string()],
-        ));
-    }
-    Ok(())
-}
-/// Reads the two entries a catalog backup ZIP must contain. Generic over the
-/// reader so this is unit-testable with an in-memory `Cursor` instead of a real
-/// file. Every failure here is about the archive the user picked (wrong file,
-/// backup from an unrelated app, truncated download, ...), never a fault of
-/// this app - hence `CmdError::expected` throughout, not a plain `?`.
 fn read_catalog_archive<R: std::io::Read + std::io::Seek>(reader: R) -> CmdResult<(Vec<u8>, String)> {
-    use std::io::Read as _;
-
-    let mut archive = zip::ZipArchive::new(reader)
-        .map_err(|_| CmdError::coded(ErrorCode::BackupNotZip))?;
-
-    let mut db_bytes = Vec::new();
-    {
-        let entry = archive
-            .by_name("catalog.db")
-            .map_err(|_| CmdError::coded_with(ErrorCode::BackupMissingEntry, ["catalog.db"]))?;
-        reject_oversized_zip_entry("catalog.db", entry.size(), MAX_IMPORT_DB_BYTES)?;
-        entry
-            .take(MAX_IMPORT_DB_BYTES)
-            .read_to_end(&mut db_bytes)
-            .map_err(|e| e.to_string())?;
-    }
-
-    let mut settings_bytes = Vec::new();
-    {
-        let entry = archive
-            .by_name("settings.json")
-            .map_err(|_| CmdError::coded_with(ErrorCode::BackupMissingEntry, ["settings.json"]))?;
-        reject_oversized_zip_entry("settings.json", entry.size(), MAX_IMPORT_SETTINGS_BYTES)?;
-        entry
-            .take(MAX_IMPORT_SETTINGS_BYTES)
-            .read_to_end(&mut settings_bytes)
-            .map_err(|e| e.to_string())?;
-    }
-    let settings_json = String::from_utf8(settings_bytes)
-        .map_err(|_| CmdError::coded(ErrorCode::BackupSettingsNotUtf8))?;
-
-    Ok((db_bytes, settings_json))
-}
-/// Tables and columns the imported schema must contain. `table` only comes from
-/// this constant, so interpolating it into the PRAGMA is safe.
-const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
-    ("files", &[
-        "id", "name", "path", "file_type", "folder_id", "file_size_bytes",
-        "imported_at", "deleted_at", "trash_path", "license",
-        "source_platform", "source_model_id", "source_profile_id",
-    ]),
-    ("folders", &["id", "name", "parent_id", "path"]),
-    ("tags", &["id", "name", "color_hue"]),
-    ("file_tags", &["file_id", "tag_id"]),
-    ("file_metadata", &["file_id", "label", "value"]),
-    (
-        "filament_spools",
-        &[
-            "id",
-            "material",
-            "remaining_weight_g",
-            "unit_id",
-            "slot_index",
-            "home_location",
-            "color_hex",
-            "color_hexes",
-            "kind",
-            "nozzle_temp_min",
-            "nozzle_temp_max",
-            "bed_temp_min",
-            "bed_temp_max",
-        ],
-    ),
-    ("printers", &["id", "name", "position", "kind"]),
-    ("material_units", &["id", "printer_id", "name", "kind", "slot_count", "bambu_ams_index", "position"]),
-    ("collections", &["id", "name", "created_at"]),
-    ("collection_files", &["collection_id", "file_id", "position"]),
-    ("registered_slicers", &["id", "name", "executable_path", "is_auto_detected"]),
-    ("app_settings", &["key", "value"]),
-    ("companion_files", &[
-        "id", "file_id", "name", "path", "kind", "size_bytes", "added_at", "deleted_at", "trash_path",
-    ]),
-    ("source_folders", &["id", "path", "added_at"]),
-    ("source_rejected", &["id", "path", "size_bytes", "rejected_at"]),
-    ("blocked_auto_tags", &["name", "blocked_at"]),
-    ("disk_sync_known_copies", &["id", "path", "size_bytes", "content_hash", "noted_at"]),
-    ("printer_connections", &["printer_id", "kind", "address", "connected_since", "paused"]),
-    ("printer_jobs", &[
-        "id", "printer_id", "remote_id", "file_name", "outcome", "raw_status", "ended_at",
-        "print_duration_s", "used_mm", "state",
-    ]),
-    ("file_print_info", &["file_id", "reader_version", "read_at", "slice_state", "settings_state"]),
-    ("file_print_plates", &["file_id", "plate_index", "first_layer_seconds"]),
-    ("bundles", &["id", "name", "kind", "created_at"]),
-    ("bundle_members", &["file_id", "bundle_id", "position"]),
-    ("slicer_reports", &[
-        "id", "reported_at", "reported_path", "file_name", "file_size_bytes", "summary_json", "state",
-        "suggested_file_id", "model_file_id",
-    ]),
-];
-
-fn validate_expected_schema(conn: &Connection) -> Result<(), String> {
-    for (table, required_columns) in REQUIRED_COLUMNS {
-        let mut stmt = conn
-            .prepare(&format!("PRAGMA table_info({table})"))
-            .map_err(|e| e.to_string())?;
-        let existing_columns: std::collections::HashSet<String> = stmt
-            .query_map([], |row| row.get::<_, String>(1))
-            .map_err(|e| e.to_string())?
-            .collect::<Result<_, _>>()
-            .map_err(|e| e.to_string())?;
-        if existing_columns.is_empty() {
-            return Err(format!("Katalog-Datenbank enthaelt nicht die erforderliche Tabelle '{table}'"));
-        }
-        for column in *required_columns {
-            if !existing_columns.contains(*column) {
-                return Err(format!(
-                    "Katalog-Datenbank: Tabelle '{table}' fehlt die erforderliche Spalte '{column}'"
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-/// Allowed SQLite storage class(es) per Rust read type (NULL separately via `nullable`).
-#[derive(Clone, Copy)]
-enum ColType {
-    /// `i64` or `bool`: 'integer' only.
-    Integer,
-    /// `f64`: 'integer' or 'real'.
-    Real,
-    /// `String`: accepts ONLY `typeof(...) = 'text'`.
-    Text,
-    /// `Vec<u8>`: accepts ONLY `typeof(...) = 'blob'`.
-    Blob,
+    catalog_restore::read_catalog_archive(reader).map_err(Into::into)
 }
 
-impl ColType {
-    fn allowed_typeof(self, nullable: bool) -> Vec<&'static str> {
-        let mut allowed: Vec<&'static str> = match self {
-            ColType::Integer => vec!["integer"],
-            ColType::Real => vec!["integer", "real"],
-            ColType::Text => vec!["text"],
-            ColType::Blob => vec!["blob"],
-        };
-        if nullable {
-            allowed.push("null");
+/// Keep the adapter's temporary databases in a private, host-owned directory.
+struct RestoreDirectory(PathBuf);
+
+impl RestoreDirectory {
+    fn new() -> CmdResult<Self> {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "3mf-katalog-restore-{}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| e.to_string())?
+                .as_nanos(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+        ));
+        let mut builder = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
         }
-        allowed
+        builder.create(&path).map_err(|e| e.to_string())?;
+        Ok(Self(path))
+    }
+
+    fn adapter(&self) -> StdRestoreFs {
+        StdRestoreFs::new(self.0.clone())
     }
 }
-/// Columns read as typed values in Rust, with their allowed storage class and
-/// whether NULL is allowed. Columns only used in ORDER BY/WHERE/binds are left out
-/// on purpose: they can't cause a `FromSql` error.
-const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
-    // files - see row_to_file/list_file_summaries (repository.rs).
-    ("files", "id", ColType::Integer, false),
-    ("files", "name", ColType::Text, false),
-    ("files", "path", ColType::Text, false),
-    ("files", "file_type", ColType::Text, false),
-    ("files", "folder_id", ColType::Integer, true),
-    ("files", "origin", ColType::Text, false),
-    ("files", "sync_status", ColType::Text, false),
-    ("files", "cloud_id", ColType::Text, true),
-    ("files", "file_size_bytes", ColType::Integer, false),
-    ("files", "dimension_x_mm", ColType::Real, true),
-    ("files", "dimension_y_mm", ColType::Real, true),
-    ("files", "dimension_z_mm", ColType::Real, true),
-    ("files", "volume_cm3", ColType::Real, true),
-    ("files", "object_count", ColType::Integer, true),
-    ("files", "thumbnail_png", ColType::Blob, true),
-    ("files", "imported_at", ColType::Text, false),
-    ("files", "file_modified_at", ColType::Text, true),
-    ("files", "print_status", ColType::Text, false),
-    ("files", "last_viewed_at", ColType::Text, true),
-    ("files", "creator", ColType::Text, true),
-    ("files", "content_hash", ColType::Text, true),
-    ("files", "render_snapshot_png", ColType::Blob, true),
-    ("files", "custom_image_png", ColType::Blob, true),
-    ("files", "source_url", ColType::Text, true),
-    ("files", "license", ColType::Text, true),
-    ("files", "source_platform", ColType::Text, true),
-    ("files", "source_model_id", ColType::Text, true),
-    ("files", "source_profile_id", ColType::Text, true),
-    ("files", "queue_position", ColType::Integer, true),
-    ("files", "favorite", ColType::Integer, false),
-    ("files", "plate_count", ColType::Integer, true),
-    ("files", "slice_info_json", ColType::Text, true),
-    ("files", "plate_dimensions_json", ColType::Text, true),
-    ("files", "deleted_at", ColType::Text, true),
-    ("files", "trash_path", ColType::Text, true),
-    // folders - see list_folders (repository.rs).
-    ("folders", "id", ColType::Integer, false),
-    ("folders", "name", ColType::Text, false),
-    ("folders", "parent_id", ColType::Integer, true),
-    ("folders", "path", ColType::Text, false),
-    // tags - see list_tag_counts/load_tags/get_or_create_tag (repository.rs).
-    ("tags", "id", ColType::Integer, false),
-    ("tags", "name", ColType::Text, false),
-    ("tags", "color_hue", ColType::Integer, false),
-    // file_tags - see list_all_file_tags (repository.rs).
-    ("file_tags", "file_id", ColType::Integer, false),
-    // file_metadata - see load_metadata (repository.rs).
-    ("file_metadata", "label", ColType::Text, false),
-    ("file_metadata", "value", ColType::Text, false),
-    // filament_spools - see list_filament_spools/get_filament_spool
-    // (repository.rs) and load_spool/unload_spool (printers.rs).
-    ("filament_spools", "id", ColType::Integer, false),
-    ("filament_spools", "material", ColType::Text, false),
-    ("filament_spools", "manufacturer", ColType::Text, true),
-    ("filament_spools", "color", ColType::Text, true),
-    ("filament_spools", "location", ColType::Text, true),
-    ("filament_spools", "diameter_mm", ColType::Real, false),
-    ("filament_spools", "original_weight_g", ColType::Real, false),
-    ("filament_spools", "remaining_weight_g", ColType::Real, false),
-    ("filament_spools", "price", ColType::Real, true),
-    ("filament_spools", "image_png", ColType::Blob, true),
-    ("filament_spools", "color_hex", ColType::Text, true),
-    ("filament_spools", "color_hexes", ColType::Text, true),
-    ("filament_spools", "home_location", ColType::Text, true),
-    ("filament_spools", "unit_id", ColType::Integer, true),
-    ("filament_spools", "slot_index", ColType::Integer, true),
-    ("filament_spools", "kind", ColType::Text, false),
-    ("filament_spools", "nozzle_temp_min", ColType::Integer, true),
-    ("filament_spools", "nozzle_temp_max", ColType::Integer, true),
-    ("filament_spools", "bed_temp_min", ColType::Integer, true),
-    ("filament_spools", "bed_temp_max", ColType::Integer, true),
-    // printers - see list_printers (printers.rs).
-    ("printers", "id", ColType::Integer, false),
-    ("printers", "name", ColType::Text, false),
-    ("printers", "kind", ColType::Text, false),
-    // material_units - see list_units (printers.rs).
-    ("material_units", "id", ColType::Integer, false),
-    ("material_units", "printer_id", ColType::Integer, false),
-    ("material_units", "name", ColType::Text, false),
-    ("material_units", "kind", ColType::Text, false),
-    ("material_units", "slot_count", ColType::Integer, false),
-    ("material_units", "bambu_ams_index", ColType::Integer, true),
-    // collections - see list_collections (collections.rs).
-    ("collections", "id", ColType::Integer, false),
-    ("collections", "name", ColType::Text, false),
-    // collection_files - see list_collection_file_ids.
-    ("collection_files", "file_id", ColType::Integer, false),
-    // registered_slicers - see list_registered_slicers/get_registered_slicer (repository.rs).
-    ("registered_slicers", "id", ColType::Integer, false),
-    ("registered_slicers", "name", ColType::Text, false),
-    ("registered_slicers", "executable_path", ColType::Text, false),
-    ("registered_slicers", "is_auto_detected", ColType::Integer, false),
-    // companion_files, source_folders, source_rejected - see db/companions.rs and db/sources.rs.
-    ("companion_files", "id", ColType::Integer, false),
-    ("companion_files", "file_id", ColType::Integer, false),
-    ("companion_files", "name", ColType::Text, false),
-    ("companion_files", "path", ColType::Text, false),
-    ("companion_files", "kind", ColType::Text, false),
-    ("companion_files", "size_bytes", ColType::Integer, true),
-    ("companion_files", "added_at", ColType::Text, false),
-    ("companion_files", "deleted_at", ColType::Text, true),
-    ("companion_files", "trash_path", ColType::Text, true),
-    ("source_folders", "id", ColType::Integer, false),
-    ("source_folders", "path", ColType::Text, false),
-    ("source_folders", "added_at", ColType::Text, false),
-    ("source_rejected", "id", ColType::Integer, false),
-    ("source_rejected", "path", ColType::Text, false),
-    ("source_rejected", "size_bytes", ColType::Integer, false),
-    ("source_rejected", "rejected_at", ColType::Text, false),
-    // blocked_auto_tags - see db/blocked_tags.rs.
-    ("blocked_auto_tags", "name", ColType::Text, false),
-    ("blocked_auto_tags", "blocked_at", ColType::Text, false),
-    // disk_sync_known_copies - see db/known_copies.rs.
-    ("disk_sync_known_copies", "id", ColType::Integer, false),
-    ("disk_sync_known_copies", "path", ColType::Text, false),
-    ("disk_sync_known_copies", "size_bytes", ColType::Integer, false),
-    ("disk_sync_known_copies", "content_hash", ColType::Text, false),
-    ("disk_sync_known_copies", "noted_at", ColType::Text, false),
-    // Printer connection - see db/printer_link.rs (connection_from_row, job_from_row).
-    ("app_settings", "key", ColType::Text, false),
-    ("app_settings", "value", ColType::Text, false),
-    ("printer_connections", "printer_id", ColType::Integer, false),
-    ("printer_connections", "kind", ColType::Text, false),
-    ("printer_connections", "address", ColType::Text, false),
-    ("printer_connections", "base_url", ColType::Text, true),
-    ("printer_connections", "remote_version", ColType::Text, true),
-    ("printer_connections", "connected_since", ColType::Real, false),
-    ("printer_connections", "last_synced_at", ColType::Real, true),
-    ("printer_connections", "last_error", ColType::Text, true),
-    ("printer_connections", "error_since", ColType::Real, true),
-    ("printer_connections", "paused", ColType::Integer, false),
-    ("printer_connections", "failures", ColType::Integer, false),
-    ("printer_connections", "last_attempt_at", ColType::Real, true),
-    ("printer_connections", "api_key", ColType::Text, true),
-    ("printer_jobs", "id", ColType::Integer, false),
-    ("printer_jobs", "printer_id", ColType::Integer, false),
-    ("printer_jobs", "remote_id", ColType::Text, false),
-    ("printer_jobs", "file_name", ColType::Text, false),
-    ("printer_jobs", "outcome", ColType::Text, false),
-    ("printer_jobs", "raw_status", ColType::Text, false),
-    ("printer_jobs", "ended_at", ColType::Real, false),
-    ("printer_jobs", "print_duration_s", ColType::Real, false),
-    ("printer_jobs", "used_mm", ColType::Real, false),
-    ("printer_jobs", "slicer_total_mm", ColType::Real, true),
-    ("printer_jobs", "slicer_weight_g", ColType::Real, true),
-    ("printer_jobs", "material", ColType::Text, true),
-    ("printer_jobs", "thumbnail_path", ColType::Text, true),
-    ("printer_jobs", "state", ColType::Text, false),
-    ("printer_jobs", "booked_spool_id", ColType::Integer, true),
-    ("printer_jobs", "booked_file_id", ColType::Integer, true),
-    ("printer_jobs", "booked_g", ColType::Real, true),
-    ("printer_jobs", "decided_at", ColType::Text, true),
-    // Not in REQUIRED_COLUMNS on purpose: an older backup gets the columns from the migration that runs first.
-    ("printer_jobs", "failure_reason", ColType::Text, true),
-    ("printer_jobs", "failure_note", ColType::Text, true),
-    ("printer_jobs", "auto_closed", ColType::Integer, false),
-    // Print data of a 3MF - see db/repository.rs (load_print_info).
-    ("file_print_info", "file_id", ColType::Integer, false),
-    ("file_print_info", "reader_version", ColType::Integer, false),
-    ("file_print_info", "read_at", ColType::Text, false),
-    ("file_print_info", "slice_state", ColType::Text, false),
-    ("file_print_info", "settings_state", ColType::Text, false),
-    ("file_print_info", "printer_model", ColType::Text, true),
-    ("file_print_info", "bed_type", ColType::Text, true),
-    ("file_print_info", "layer_height_mm", ColType::Real, true),
-    ("file_print_info", "nozzle_mm", ColType::Real, true),
-    ("file_print_info", "nozzle_mixed", ColType::Integer, false),
-    ("file_print_info", "bed_temp_c", ColType::Real, true),
-    ("file_print_info", "bed_temp_mixed", ColType::Integer, false),
-    ("file_print_info", "nozzle_temp_c", ColType::Real, true),
-    ("file_print_info", "nozzle_temp_mixed", ColType::Integer, false),
-    // Not in REQUIRED_COLUMNS on purpose: an older backup gets the column from the migration that runs first.
-    ("file_print_info", "filament_colors", ColType::Text, true),
-    ("file_print_plates", "file_id", ColType::Integer, false),
-    ("file_print_plates", "plate_index", ColType::Integer, false),
-    ("file_print_plates", "plate_name", ColType::Text, true),
-    ("file_print_plates", "print_seconds", ColType::Integer, true),
-    ("file_print_plates", "first_layer_seconds", ColType::Real, true),
-    ("file_print_plates", "plate_bed_type", ColType::Text, true),
-    ("bundles", "id", ColType::Integer, false),
-    ("bundles", "name", ColType::Text, false),
-    ("bundles", "kind", ColType::Text, false),
-    ("bundles", "created_at", ColType::Text, false),
-    ("bundle_members", "file_id", ColType::Integer, false),
-    ("bundle_members", "bundle_id", ColType::Integer, false),
-    ("bundle_members", "position", ColType::Integer, false),
-    ("bundle_members", "label", ColType::Text, true),
-    // slicer_reports - see db/slicer_reports.rs.
-    ("slicer_reports", "id", ColType::Integer, false),
-    ("slicer_reports", "reported_at", ColType::Text, false),
-    ("slicer_reports", "reported_path", ColType::Text, false),
-    ("slicer_reports", "file_name", ColType::Text, false),
-    ("slicer_reports", "file_size_bytes", ColType::Integer, false),
-    ("slicer_reports", "slicer", ColType::Text, true),
-    ("slicer_reports", "summary_json", ColType::Text, false),
-    ("slicer_reports", "state", ColType::Text, false),
-    ("slicer_reports", "suggested_file_id", ColType::Integer, true),
-    ("slicer_reports", "model_file_id", ColType::Integer, true),
-    ("slicer_reports", "decided_at", ColType::Text, true),
-];
-/// Checks the storage classes from `COLUMN_TYPES`. A crafted DB can bring tables
-/// without type affinity, e.g. `slot_count = 4.5`: it passes every value check but
-/// makes `row.get::<_, i64>` fail on read. Therefore runs before
-/// `validate_printer_invariants`.
-fn validate_column_types(conn: &Connection) -> Result<(), String> {
-    for &(table, column, col_type, nullable) in COLUMN_TYPES {
-        let allowed = col_type.allowed_typeof(nullable);
-        let placeholders = allowed.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        let sql = format!(
-            "SELECT COUNT(*) FROM \"{table}\" WHERE typeof(\"{column}\") NOT IN ({placeholders})"
-        );
-        let bad: i64 = conn
-            .query_row(&sql, rusqlite::params_from_iter(allowed.iter().copied()), |row| row.get(0))
-            .map_err(|e| e.to_string())?;
-        if bad > 0 {
-            return Err(format!(
-                "Katalog-Datenbank enthaelt einen falschen Datentyp in Tabelle '{table}', Spalte '{column}'"
-            ));
-        }
-    }
-    Ok(())
-}
-/// Checks the printer and slot invariants directly on the data, because an
-/// imported DB can omit its CHECK constraints and foreign keys.
-///
-/// Every condition must cover `IS NULL` explicitly: a comparison with NULL is
-/// UNKNOWN, so `kind = NULL` does not satisfy `kind NOT IN (...)` and would slip
-/// through, although `list_printers`/`list_units` can't read the row afterwards.
-fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
-    let bad_printers: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM printers
-             WHERE id IS NULL OR name IS NULL OR position IS NULL
-                OR kind IS NULL OR kind NOT IN ('filament', 'resin')",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    if bad_printers > 0 {
-        return Err("Katalog-Datenbank enthaelt Drucker mit fehlendem Pflichtwert".to_string());
-    }
 
-    let bad_units: i64 = conn
-        .query_row(
-            &format!(
-                "SELECT COUNT(*) FROM material_units
-                 WHERE id IS NULL
-                    OR printer_id IS NULL
-                    OR name IS NULL
-                    OR kind IS NULL
-                    OR slot_count IS NULL
-                    OR position IS NULL
-                    OR kind NOT IN ({})
-                    OR slot_count NOT BETWEEN 1 AND 16
-                    OR (bambu_ams_index IS NOT NULL AND bambu_ams_index NOT BETWEEN 0 AND 3)
-                    OR printer_id NOT IN (SELECT id FROM printers)",
-                db::printers::UNIT_KINDS.iter().map(|_| "?").collect::<Vec<_>>().join(", ")
-            ),
-            rusqlite::params_from_iter(db::printers::UNIT_KINDS.iter().copied()),
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    if bad_units > 0 {
-        return Err(
-            "Katalog-Datenbank enthaelt ungueltige Drucker-Einheiten (fehlender Pflichtwert, Typ, Fachanzahl, AMS-Nummer oder Drucker-Zuordnung)"
-                .to_string(),
-        );
+impl Drop for RestoreDirectory {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
     }
-
-    // COALESCE: if the subquery yields NULL, `slot_index >= NULL` would be UNKNOWN
-    // and the row invisible. With 0, every index fails.
-    let bad_spools: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM filament_spools
-             WHERE (unit_id IS NULL) <> (slot_index IS NULL)
-                OR (unit_id IS NOT NULL AND unit_id NOT IN (SELECT id FROM material_units))
-                OR (unit_id IS NOT NULL AND (
-                    slot_index < 0
-                    OR slot_index >= COALESCE(
-                        (SELECT slot_count FROM material_units m WHERE m.id = filament_spools.unit_id), 0
-                    )
-                ))",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    if bad_spools > 0 {
-        return Err("Katalog-Datenbank enthaelt Spulen mit ungueltiger Fach-Zuordnung".to_string());
-    }
-
-    let duplicate_slots: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM (
-                SELECT unit_id, slot_index FROM filament_spools
-                WHERE unit_id IS NOT NULL
-                GROUP BY unit_id, slot_index HAVING COUNT(*) > 1
-             )",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    if duplicate_slots > 0 {
-        return Err("Katalog-Datenbank enthaelt mehrere Spulen im selben Fach".to_string());
-    }
-
-    let bad_temperatures: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM filament_spools
-             WHERE nozzle_temp_min NOT BETWEEN 0 AND 500
-                OR nozzle_temp_max NOT BETWEEN 0 AND 500
-                OR bed_temp_min NOT BETWEEN 0 AND 500
-                OR bed_temp_max NOT BETWEEN 0 AND 500
-                OR nozzle_temp_min > nozzle_temp_max
-                OR bed_temp_min > bed_temp_max",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    if bad_temperatures > 0 {
-        return Err("Katalog-Datenbank enthaelt ungueltige Drucktemperaturen".to_string());
-    }
-
-    let bad_colors: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM filament_spools
-             WHERE color_hex IS NOT NULL
-               AND color_hex NOT GLOB '#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]'",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    if bad_colors > 0 {
-        return Err("Katalog-Datenbank enthaelt ungueltige Farbwerte".to_string());
-    }
-
-    // The colour list is parsed again on every load; a foreign backup must not bring
-    // oversized lists or text that is not a colour.
-    let mut color_lists = conn
-        .prepare("SELECT color_hexes, color_hex FROM filament_spools WHERE color_hexes IS NOT NULL")
-        .map_err(|e| e.to_string())?;
-    for row in color_lists
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)))
-        .map_err(|e| e.to_string())?
-    {
-        let (raw, single) = row.map_err(|e| e.to_string())?;
-        // The single colour (slicer matching) must equal the first list entry, as the
-        // app itself always stores it.
-        let valid = serde_json::from_str::<Vec<String>>(&raw).is_ok_and(|list| {
-            crate::db::printers::validate_color_list(&list).is_ok()
-                && list.first().is_none_or(|first| single.as_deref().is_some_and(|s| s.eq_ignore_ascii_case(first)))
-        });
-        if !valid {
-            return Err("Katalog-Datenbank enthaelt ungueltige Farblisten".to_string());
-        }
-    }
-    drop(color_lists);
-
-    // Resin only in a resin vat, filament never. A crafted backup can bring the
-    // column without its CHECK.
-    let bad_kinds: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM filament_spools
-             WHERE kind IS NULL OR kind NOT IN ('filament', 'resin')
-                OR (unit_id IS NOT NULL AND (kind = 'resin') <> COALESCE(
-                    (SELECT m.kind = 'resin_vat' FROM material_units m WHERE m.id = filament_spools.unit_id), 0
-                ))",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    if bad_kinds > 0 {
-        return Err(
-            "Katalog-Datenbank enthaelt Eintraege mit ungueltiger Art (oder Resin/Filament im falschen Drucker)".to_string(),
-        );
-    }
-
-    // Resin vats have exactly one slot and belong to resin printers only; a resin
-    // printer has only its one vat.
-    let bad_resin_units: i64 = conn
-        .query_row(
-            "SELECT
-               (SELECT COUNT(*) FROM material_units m JOIN printers p ON p.id = m.printer_id
-                 WHERE (m.kind = 'resin_vat') <> (p.kind = 'resin')
-                    OR (m.kind = 'resin_vat' AND m.slot_count <> 1))
-             + (SELECT COUNT(*) FROM (
-                 SELECT printer_id FROM material_units WHERE kind = 'resin_vat'
-                 GROUP BY printer_id HAVING COUNT(*) > 1))",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    if bad_resin_units > 0 {
-        return Err("Katalog-Datenbank enthaelt ungueltige Harzwannen oder Resin-Drucker-Einheiten".to_string());
-    }
-
-    Ok(())
-}
-/// CHECK values of the printer connection (a crafted backup could bring tables
-/// without CHECK if they were created before the migration). The home network
-/// check of the address happens on restore in `sanitize_printer_connections`.
-fn validate_printer_link_rows(conn: &Connection) -> Result<(), String> {
-    // Resin printers have no printer connection.
-    let bad: i64 = conn
-        .query_row(
-            "SELECT
-               (SELECT COUNT(*) FROM printer_connections WHERE kind <> 'moonraker' OR paused NOT IN (0, 1)
-                    OR failures < 0
-                    OR length(api_key) > 256 OR api_key GLOB '*[^!-~]*'
-                    OR printer_id IN (SELECT id FROM printers WHERE kind = 'resin'))
-             + (SELECT COUNT(*) FROM printer_jobs WHERE outcome NOT IN ('completed', 'partial')
-                    OR state NOT IN ('open', 'confirmed', 'ignored'))",
-            [],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    // The failure fields: a code of the list (no CHECK in the database holds it), only on a print
-    // that ended early, a short note, and the flag only on prints nobody has to decide. The codes
-    // are constants of ours, so joining them into the statement is safe.
-    let reasons = crate::printer_link::failure::FAILURE_REASONS.iter().map(|r| format!("'{r}'")).collect::<Vec<_>>().join(", ");
-    let bad_jobs: i64 = conn
-        .query_row(
-            &format!(
-                "SELECT COUNT(*) FROM printer_jobs WHERE auto_closed NOT IN (0, 1)
-                    OR (auto_closed = 1 AND state <> 'ignored')
-                    OR (failure_reason IS NOT NULL AND (failure_reason NOT IN ({reasons}) OR outcome <> 'partial'))
-                    OR length(failure_note) > {}",
-                crate::printer_link::failure::MAX_NOTE_CHARS
-            ),
-            [],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    if bad + bad_jobs > 0 {
-        return Err("Katalog-Datenbank enthaelt ungueltige Druckeranbindungs-Eintraege".to_string());
-    }
-    Ok(())
 }
 
-/// The print data tables are derived from the 3MF files, but a crafted backup can bring them
-/// without primary key, foreign key and CHECK clauses, and `foreign_key_check` only knows
-/// declared keys. So every rule is checked on the data itself. A violation rejects the whole
-/// backup: nothing is dropped silently, because a damaged backup should not lose data unnoticed.
-///
-/// Every condition covers `IS NULL` explicitly (a comparison with NULL is UNKNOWN and would
-/// slip through). Runs after `validate_column_types`, so the storage classes are known.
-fn validate_print_info_rows(conn: &Connection) -> Result<(), String> {
-    use crate::threemf::print_info::{
-        MAX_LAYER_HEIGHT_MM, MAX_NOZZLE_MM, MAX_PLATES, MAX_SECONDS, MAX_TEMP_C, MIN_LAYER_HEIGHT_MM, MIN_NOZZLE_MM,
-        MIN_SECONDS, MIN_TEMP_C, PRINT_INFO_READER_VERSION,
-    };
-    let count = |sql: &str, params: &[&dyn rusqlite::ToSql]| -> Result<i64, String> {
-        conn.query_row(sql, params, |r| r.get(0)).map_err(|e| e.to_string())
-    };
-    let reject = |what: &str| format!("Katalog-Datenbank enthaelt ungueltige Druckdaten ({what})");
-
-    // Reference: every row belongs to an existing 3MF file.
-    let orphans = count(
-        "SELECT (SELECT COUNT(*) FROM file_print_info i WHERE i.file_id IS NULL OR NOT EXISTS
-                    (SELECT 1 FROM files f WHERE f.id = i.file_id AND f.file_type IN ('3mf', 'gcode')))
-              + (SELECT COUNT(*) FROM file_print_plates p WHERE p.file_id IS NULL OR NOT EXISTS
-                    (SELECT 1 FROM files f WHERE f.id = p.file_id AND f.file_type IN ('3mf', 'gcode')))",
-        &[],
-    )?;
-    if orphans > 0 {
-        return Err(reject("Verweis auf keine 3MF- oder G-Code-Datei"));
-    }
-
-    // Uniqueness: one info row per file, one plate row per (file, index).
-    let duplicates = count(
-        "SELECT (SELECT COUNT(*) - COUNT(DISTINCT file_id) FROM file_print_info)
-              + (SELECT COUNT(*) FROM (SELECT 1 FROM file_print_plates GROUP BY file_id, plate_index HAVING COUNT(*) > 1))",
-        &[],
-    )?;
-    if duplicates > 0 {
-        return Err(reject("doppelte Zeilen"));
-    }
-
-    // Plate index and plate count per file.
-    let max_plates = MAX_PLATES as i64;
-    let plates = count(
-        "SELECT (SELECT COUNT(*) FROM file_print_plates
-                  WHERE plate_index IS NULL OR typeof(plate_index) <> 'integer' OR plate_index < 1)
-              + (SELECT COUNT(*) FROM (SELECT 1 FROM file_print_plates GROUP BY file_id HAVING COUNT(*) > ?1))",
-        &[&max_plates],
-    )?;
-    if plates > 0 {
-        return Err(reject("Plattenindex"));
-    }
-
-    // States, version and flags.
-    let max_version = i64::from(PRINT_INFO_READER_VERSION);
-    let max_gcode_version = i64::from(katalog_core::gcode::GCODE_READER_VERSION);
-    let states = count(
-        "SELECT COUNT(*) FROM file_print_info
-         WHERE slice_state IS NULL OR slice_state NOT IN ('sliced', 'no_slice_data', 'not_recognized', 'unreadable')
-            OR settings_state IS NULL OR settings_state NOT IN ('read', 'missing', 'unreadable', 'not_attempted')
-            OR reader_version IS NULL OR typeof(reader_version) <> 'integer' OR reader_version < 1 OR reader_version > ?1
-            OR (reader_version > ?2 AND EXISTS (SELECT 1 FROM files f WHERE f.id = file_print_info.file_id AND f.file_type = 'gcode'))
-            OR nozzle_mixed IS NULL OR nozzle_mixed NOT IN (0, 1)
-            OR bed_temp_mixed IS NULL OR bed_temp_mixed NOT IN (0, 1)
-            OR nozzle_temp_mixed IS NULL OR nozzle_temp_mixed NOT IN (0, 1)",
-        &[&max_version, &max_gcode_version],
-    )?;
-    if states > 0 {
-        return Err(reject("Zustand, Version oder Kennzeichen"));
-    }
-
-    // Temperatures and print time exist only for a sliced file; a mixed value has no number.
-    let inconsistent = count(
-        "SELECT (SELECT COUNT(*) FROM file_print_info
-                  WHERE (slice_state <> 'sliced' AND (nozzle_temp_c IS NOT NULL OR bed_temp_c IS NOT NULL
-                                                      OR nozzle_temp_mixed <> 0 OR bed_temp_mixed <> 0))
-                     OR (nozzle_mixed = 1 AND nozzle_mm IS NOT NULL)
-                     OR (bed_temp_mixed = 1 AND bed_temp_c IS NOT NULL)
-                     OR (nozzle_temp_mixed = 1 AND nozzle_temp_c IS NOT NULL))
-              + (SELECT COUNT(*) FROM file_print_plates p JOIN file_print_info i ON i.file_id = p.file_id
-                  WHERE p.print_seconds IS NOT NULL AND i.slice_state <> 'sliced')",
-        &[],
-    )?;
-    if inconsistent > 0 {
-        return Err(reject("Werte, die der Zustand ausschliesst"));
-    }
-
-    // Plausible numbers (never 0 as a placeholder, nothing negative or absurd).
-    let numbers = count(
-        "SELECT (SELECT COUNT(*) FROM file_print_info
-                  WHERE (layer_height_mm IS NOT NULL AND NOT (layer_height_mm BETWEEN ?1 AND ?2))
-                     OR (nozzle_mm IS NOT NULL AND NOT (nozzle_mm BETWEEN ?3 AND ?4))
-                     OR (bed_temp_c IS NOT NULL AND NOT (bed_temp_c BETWEEN ?5 AND ?6))
-                     OR (nozzle_temp_c IS NOT NULL AND NOT (nozzle_temp_c BETWEEN ?5 AND ?6)))
-              + (SELECT COUNT(*) FROM file_print_plates
-                  WHERE (print_seconds IS NOT NULL AND NOT (print_seconds BETWEEN ?7 AND ?8))
-                     OR (first_layer_seconds IS NOT NULL AND NOT (first_layer_seconds BETWEEN ?7 AND ?8)))",
-        &[
-            &MIN_LAYER_HEIGHT_MM, &MAX_LAYER_HEIGHT_MM, &MIN_NOZZLE_MM, &MAX_NOZZLE_MM, &MIN_TEMP_C, &MAX_TEMP_C,
-            &MIN_SECONDS, &MAX_SECONDS,
-        ],
-    )?;
-    if numbers > 0 {
-        return Err(reject("Zahl ausserhalb des erlaubten Bereichs"));
-    }
-
-    // Texts are shown in the UI: same limits as freshly read ones; the read time must parse.
-    let mut info = conn
-        .prepare("SELECT read_at, printer_model, bed_type FROM file_print_info")
-        .map_err(|e| e.to_string())?;
-    let rows = info
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, Option<String>>(2)?)))
-        .map_err(|e| e.to_string())?;
-    for row in rows {
-        let (read_at, printer_model, bed_type) = row.map_err(|e| e.to_string())?;
-        if chrono::DateTime::parse_from_rfc3339(&read_at).is_err() {
-            return Err(reject("Lesezeitpunkt"));
-        }
-        for text in [printer_model, bed_type].into_iter().flatten() {
-            crate::threemf::source::validate_source_value(&text).map_err(|_| reject("Text"))?;
-        }
-    }
-    drop(info);
-
-    // Filament colors: one text of `#rrggbb` entries separated by single spaces, at most 32
-    // (lowercase, no alpha, no empty text); NULL when none are known.
-    let mut colors = conn
-        .prepare("SELECT filament_colors FROM file_print_info WHERE filament_colors IS NOT NULL")
-        .map_err(|e| e.to_string())?;
-    let rows = colors.query_map([], |row| row.get::<_, rusqlite::types::Value>(0)).map_err(|e| e.to_string())?;
-    for row in rows {
-        let valid = match row.map_err(|e| e.to_string())? {
-            rusqlite::types::Value::Text(text) => crate::threemf::print_info::parse_color_list_text(&text).is_some(),
-            _ => false,
-        };
-        if !valid {
-            return Err(reject("Filamentfarben"));
-        }
-    }
-    drop(colors);
-    let mut plate_texts = conn
-        .prepare("SELECT plate_name, plate_bed_type FROM file_print_plates")
-        .map_err(|e| e.to_string())?;
-    let rows = plate_texts
-        .query_map([], |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?)))
-        .map_err(|e| e.to_string())?;
-    for row in rows {
-        let (name, bed_type) = row.map_err(|e| e.to_string())?;
-        for text in [name, bed_type].into_iter().flatten() {
-            crate::threemf::source::validate_source_value(&text).map_err(|_| reject("Text"))?;
-        }
-    }
-    Ok(())
-}
-
-/// Slicer reports are shown in the UI and their paths are shown to the user (never opened by the app
-/// before a decision), so a foreign backup must not bring oversized or control text; the rules the CHECK
-/// clauses would enforce are checked on the data itself (a crafted backup can omit them).
-fn validate_slicer_report_rows(conn: &Connection) -> Result<(), String> {
-    use crate::db::slicer_reports::MAX_SUMMARY_BYTES;
-    let reject = |what: &str| format!("Katalog-Datenbank enthaelt ungueltige Slicer-Meldungen ({what})");
-    let bad_rows: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM slicer_reports
-              WHERE state IS NULL OR state NOT IN ('open', 'linked', 'dismissed')
-                 OR file_size_bytes IS NULL OR file_size_bytes < 0
-                 OR length(CAST(summary_json AS BLOB)) > ?1",
-            [MAX_SUMMARY_BYTES as i64],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    if bad_rows > 0 {
-        return Err(reject("Zustand, Groesse oder Zusammenfassung"));
-    }
-    let mut stmt = conn
-        .prepare("SELECT reported_at, reported_path, file_name, slicer, summary_json, decided_at FROM slicer_reports")
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, String>(4)?, r.get::<_, Option<String>>(5)?))
-        })
-        .map_err(|e| e.to_string())?;
-    for row in rows {
-        let (reported_at, path, name, slicer, summary, decided_at) = row.map_err(|e| e.to_string())?;
-        if chrono::DateTime::parse_from_rfc3339(&reported_at).is_err() || decided_at.is_some_and(|d| chrono::DateTime::parse_from_rfc3339(&d).is_err()) {
-            return Err(reject("Zeitpunkt"));
-        }
-        let texts_fit = path.chars().count() <= 1024
-            && name.chars().count() <= 255
-            && slicer.as_deref().is_none_or(|s| s.chars().count() <= 200)
-            && [Some(path.as_str()), Some(name.as_str()), slicer.as_deref()].into_iter().flatten().all(|t| !t.chars().any(|c| c.is_control()));
-        if !texts_fit || name.is_empty() {
-            return Err(reject("Text"));
-        }
-        if serde_json::from_str::<katalog_core::slicer_report::Summary>(&summary).is_err() {
-            return Err(reject("Zusammenfassung"));
-        }
-    }
-    Ok(())
-}
-
-/// Bundle names and labels are shown in the UI, so a foreign backup must not bring oversized or
-/// control text, and the rules the CHECK clauses would enforce are checked on the data itself
-/// (a crafted backup can omit them). A bundle with fewer than two members is accepted on purpose:
-/// the app can leave one behind and removes it at the next start, so a backup of the app's own
-/// would otherwise be refused. Runs after `validate_column_types`, so the storage classes are known.
-fn validate_bundle_rows(conn: &Connection) -> Result<(), String> {
-    use crate::db::bundles::{MAX_BUNDLE_LABEL_CHARS, MAX_BUNDLE_MEMBERS, MAX_BUNDLE_NAME_CHARS};
-    let reject = |what: &str| format!("Katalog-Datenbank enthaelt ungueltige Buendel ({what})");
-    let count = |sql: &str, params: &[&dyn rusqlite::ToSql]| -> Result<i64, String> {
-        conn.query_row(sql, params, |r| r.get(0)).map_err(|e| e.to_string())
-    };
-
-    if count("SELECT COUNT(*) FROM bundles WHERE kind IS NULL OR kind NOT IN ('variants', 'parts')", &[])? > 0 {
-        return Err(reject("unbekannte Art"));
-    }
-    // Reference: a member belongs to an existing bundle and an existing file.
-    let orphans = count(
-        "SELECT COUNT(*) FROM bundle_members m
-          WHERE m.file_id IS NULL OR m.bundle_id IS NULL
-             OR NOT EXISTS (SELECT 1 FROM bundles b WHERE b.id = m.bundle_id)
-             OR NOT EXISTS (SELECT 1 FROM files f WHERE f.id = m.file_id)",
-        &[],
-    )?;
-    if orphans > 0 {
-        return Err(reject("Mitglied ohne Buendel oder ohne Datei"));
-    }
-    // A file is a member once, and the bundles are not larger than the app allows.
-    let duplicates = count("SELECT COUNT(*) - COUNT(DISTINCT file_id) FROM bundle_members", &[])?;
-    if duplicates > 0 {
-        return Err(reject("Datei in mehreren Buendeln"));
-    }
-    let too_large = count(
-        "SELECT COUNT(*) FROM (SELECT 1 FROM bundle_members GROUP BY bundle_id HAVING COUNT(*) > ?1)",
-        &[&(MAX_BUNDLE_MEMBERS as i64)],
-    )?;
-    if too_large > 0 {
-        return Err(reject("zu viele Mitglieder"));
-    }
-    if count("SELECT COUNT(*) FROM bundle_members WHERE position < 0", &[])? > 0 {
-        return Err(reject("negative Position"));
-    }
-
-    let valid_text = |text: &str, max: usize| text.chars().count() <= max && !text.chars().any(char::is_control);
-    let mut names = conn.prepare("SELECT name FROM bundles").map_err(|e| e.to_string())?;
-    let rows = names
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(|e| e.to_string())?;
-    for row in rows {
-        let name = row.map_err(|e| e.to_string())?;
-        if name.trim().is_empty() || !valid_text(&name, MAX_BUNDLE_NAME_CHARS) {
-            return Err(reject("Name"));
-        }
-    }
-    drop(names);
-    let mut labels = conn
-        .prepare("SELECT label FROM bundle_members WHERE label IS NOT NULL")
-        .map_err(|e| e.to_string())?;
-    let rows = labels.query_map([], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())?;
-    for row in rows {
-        if !valid_text(&row.map_err(|e| e.to_string())?, MAX_BUNDLE_LABEL_CHARS) {
-            return Err(reject("Beschriftung"));
-        }
-    }
-    Ok(())
-}
-
-/// On restore: drop connections with addresses outside the home network and
-/// pause all others until the user tests them again.
-fn sanitize_printer_connections(conn: &Connection) -> Result<(), String> {
-    let rows: Vec<(i64, String)> = conn
-        .prepare("SELECT printer_id, address FROM printer_connections")
-        .and_then(|mut s| s.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect())
-        .map_err(|e| e.to_string())?;
-    for (printer_id, address) in rows {
-        if !crate::printer_link::address::looks_valid(&address) {
-            conn.execute("DELETE FROM printer_connections WHERE printer_id = ?1", [printer_id])
-                .map_err(|e| e.to_string())?;
-        }
-    }
-    // The count of failed attempts belongs to the machine the backup came from.
-    conn.execute("UPDATE printer_connections SET paused = 1, failures = 0, last_attempt_at = NULL", [])
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-/// Checks that `bytes` are a usable, safe catalog DB BEFORE the existing
-/// catalog.db is touched: opens, has the expected schema, no `folders.path` in
-/// system directories and every `files.trash_path` inside `trash_dir`.
 fn validate_catalog_db_bytes(
     bytes: &[u8],
     sensitive_dirs: &[PathBuf],
     trash_dir: &Path,
     known_folders: &[String],
 ) -> CmdResult<()> {
-    let tmp_path = std::env::temp_dir().join(format!(
-        "3mf-katalog-import-check-{}-{}.db",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| e.to_string())?
-            .as_nanos()
-    ));
-    write_temp_file_exclusive(&tmp_path, bytes).map_err(|e| e.to_string())?;
-
-    let result = Connection::open(&tmp_path)
-        .map_err(|e| e.to_string())
-        .and_then(|mut conn| {
-            let expanded_dirs = expand_sensitive_dirs(sensitive_dirs);
-            let resolved_trash_dir =
-                resolve_path_for_sensitivity_check(trash_dir).map_err(|e| e.to_string())?;
-            // The app's trash lives under sensitive data dirs; containment still guards it.
-            let trash_denylist: Vec<PathBuf> = expanded_dirs
-                .iter()
-                .filter(|dir| !resolved_trash_dir.starts_with(dir))
-                .cloned()
-                .collect();
-            // Views, triggers and virtual tables run SQL or code from the foreign file
-            // as soon as they are queried - a recursive view named `files` never
-            // finishes. The app creates none of them, so they are rejected by
-            // looking only at sqlite_schema, before any other statement touches the data.
-            conn.pragma_update(None, "trusted_schema", false).map_err(|e| e.to_string())?;
-            let mut schema_stmt = conn
-                .prepare(
-                    "SELECT type, name FROM sqlite_schema
-                     WHERE type IN ('trigger', 'view')
-                        OR (type = 'table' AND sql LIKE 'CREATE VIRTUAL TABLE%')",
-                )
-                .map_err(|e| e.to_string())?;
-            let unexpected_schema_objects: Vec<(String, String)> = schema_stmt
-                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-                .map_err(|e| e.to_string())?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| e.to_string())?;
-            if !unexpected_schema_objects.is_empty() {
-                let names: Vec<String> = unexpected_schema_objects
-                    .iter()
-                    .map(|(kind, name)| format!("{kind} '{name}'"))
-                    .collect();
-                return Err(format!(
-                    "Katalog-Datenbank enthaelt nicht erlaubte Schema-Objekte: {}",
-                    names.join(", ")
-                ));
-            }
-            drop(schema_stmt);
-
-            conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get::<_, i64>(0))
-                .map_err(|e| e.to_string())?;
-
-            // quick_check detects structural corruption; before any migration.
-            let quick_check: String = conn
-                .query_row("PRAGMA quick_check", [], |row| row.get(0))
-                .map_err(|e| e.to_string())?;
-            if quick_check != "ok" {
-                return Err(format!("Katalog-Datenbank ist beschaedigt (quick_check: {quick_check})"));
-            }
-
-            // Migrate first, so older legitimate backups (e.g. without
-            // folders.parent_id) don't fail the following checks.
-            crate::db::run_migrations(&mut conn).map_err(|e| e.to_string())?;
-
-            // quick_check says nothing about whether the tables and columns the app needs exist.
-            validate_expected_schema(&conn)?;
-
-            // Existence isn't enough, the storage classes must match too (see `validate_column_types`).
-            validate_column_types(&conn)?;
-            let mut licenses = conn.prepare("SELECT license FROM files WHERE license IS NOT NULL")
-                .map_err(|e| e.to_string())?;
-            for value in licenses.query_map([], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())? {
-                crate::db::licenses::validate_license(Some(&value.map_err(|e| e.to_string())?))
-                    .map_err(|e| e.to_string())?;
-            }
-            drop(licenses);
-            // Shown in the UI, so a foreign backup must not smuggle in oversized or control text.
-            let mut sources = conn.prepare(
-                "SELECT source_platform, source_model_id, source_profile_id FROM files
-                 WHERE source_platform IS NOT NULL OR source_model_id IS NOT NULL OR source_profile_id IS NOT NULL")
-                .map_err(|e| e.to_string())?;
-            for row in sources.query_map([], |row| Ok([row.get::<_, Option<String>>(0)?, row.get(1)?, row.get(2)?])).map_err(|e| e.to_string())? {
-                for value in row.map_err(|e| e.to_string())?.into_iter().flatten() {
-                    crate::threemf::source::validate_source_value(&value).map_err(|e| e.to_string())?;
-                }
-            }
-            drop(sources);
-
-            // A DB with a current user_version skips every migration and can bring tables
-            // without CHECK, FK and unique index. Without this check e.g.
-            // `slot_count = 1000000000` could hang the frontend while rendering, or two
-            // spools could end up in the same slot.
-            validate_printer_invariants(&conn)?;
-            validate_printer_link_rows(&conn)?;
-            validate_print_info_rows(&conn)?;
-            validate_bundle_rows(&conn)?;
-            validate_slicer_report_rows(&conn)?;
-            // quick_check doesn't catch FK violations; check them after the migration.
-            conn.pragma_update(None, "foreign_keys", true).map_err(|e| e.to_string())?;
-            let mut fk_stmt = conn.prepare("PRAGMA foreign_key_check").map_err(|e| e.to_string())?;
-            let has_violation = fk_stmt.exists([]).map_err(|e| e.to_string())?;
-            if has_violation {
-                return Err("Katalog-Datenbank enthaelt Fremdschluessel-Verletzungen".to_string());
-            }
-            drop(fk_stmt);
-
-            // Validate every stored path lexically before resolving any imported value.
-            let mut paths = conn.prepare("SELECT path, 0 FROM folders UNION ALL SELECT path, 0 FROM files UNION ALL SELECT trash_path, 1 FROM files WHERE trash_path IS NOT NULL")
-                .map_err(|e| e.to_string())?;
-            for row in paths.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, bool>(1)?))).map_err(|e| e.to_string())? {
-                let (path, is_trash) = row.map_err(|e| e.to_string())?;
-                if is_trash && path.trim().is_empty() {
-                    continue;
-                }
-                validate_imported_path_length(&path, known_folders)?;
-            }
-            drop(paths);
-
-            let mut stmt = conn
-                .prepare("SELECT name, path FROM folders")
-                .map_err(|e| e.to_string())?;
-            let paths = stmt
-                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
-                .map_err(|e| e.to_string())?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| e.to_string())?;
-            for (name, path) in paths {
-                validate_file_name(&name).map_err(|e| e.message)?;
-                validate_imported_path_length(&path, known_folders)?;
-                // `.message`, not `{e}`/Display: `e` is already a `CmdError` (logged once
-                // at its creation site inside `reject_if_sensitive_path_expanded`); this
-                // just carries its text onward as part of this function's `String` error,
-                // so it isn't converted/logged a second time here.
-                reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
-                    .map_err(|e| format!("Ordner-Eintrag im Archiv abgelehnt: {}", e.message))?;
-            }
-
-            // Cycles in folders.parent_id would send every path reconstruction into an endless loop.
-            let mut folder_edges_stmt = conn
-                .prepare("SELECT id, parent_id FROM folders")
-                .map_err(|e| e.to_string())?;
-            let edges: Vec<(i64, Option<i64>)> = folder_edges_stmt
-                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-                .map_err(|e| e.to_string())?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| e.to_string())?;
-            let parent_of: std::collections::HashMap<i64, Option<i64>> = edges.into_iter().collect();
-            for &start in parent_of.keys() {
-                let mut current = start;
-                let mut steps = 0usize;
-                let mut seen = std::collections::HashSet::new();
-                seen.insert(current);
-                while let Some(Some(parent)) = parent_of.get(&current) {
-                    if !seen.insert(*parent) {
-                        return Err(format!("Katalog-Datenbank enthaelt einen zyklischen Ordner-Graphen (beteiligt: Ordner-ID {parent})"));
-                    }
-                    current = *parent;
-                    steps += 1;
-                    if steps > parent_of.len() {
-                        break; // defensive upper bound, `seen` should already cover this
-                    }
-                }
-            }
-            drop(folder_edges_stmt);
-
-            let mut stmt = conn
-                .prepare("SELECT name, path, trash_path FROM files")
-                .map_err(|e| e.to_string())?;
-            let rows = stmt
-                .query_map([], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, Option<String>>(2)?,
-                    ))
-                })
-                .map_err(|e| e.to_string())?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| e.to_string())?;
-            for (name, path, trash_path) in rows {
-                validate_imported_path_length(&path, known_folders)?;
-                if let Some(path) = trash_path.as_ref().filter(|p| !p.trim().is_empty()) { validate_imported_path_length(path, known_folders)?; }
-                // `.message` everywhere below, not `{e}`/Display: each `e` is already a
-                // `CmdError` (logged once at its creation site inside the nested helper);
-                // this only carries its text onward as part of this function's `String`
-                // error, so it isn't converted/logged a second time here.
-                validate_file_name(&name)
-                    .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {}", e.message))?;
-                reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
-                    .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {}", e.message))?;
-                if let Some(trash_path) = trash_path.filter(|p| !p.trim().is_empty()) {
-                    // Denylist AND containment. The denylist skips the trash dir's ancestors
-                    // (`trash_denylist`, e.g. the data dir), so it only blocks unrelated
-                    // sensitive dirs like ~/.ssh or /etc; containment alone guards the rest.
-                    reject_if_sensitive_path_expanded(Path::new(&trash_path), &trash_denylist)
-                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
-                    reject_if_outside_trash_dir(Path::new(&trash_path), &resolved_trash_dir)
-                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
-                }
-            }
-            // Companion rows decide which files the app moves, deletes or opens, so each
-            // must look like what the app itself writes: allowed kind, an `_extras`
-            // folder, no protected location, a trash file only inside the trash.
-            let mut stmt = conn
-                .prepare("SELECT name, path, kind, trash_path FROM companion_files")
-                .map_err(|e| e.to_string())?;
-            let companions = stmt
-                .query_map([], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, Option<String>>(3)?,
-                    ))
-                })
-                .map_err(|e| e.to_string())?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| e.to_string())?;
-            for (name, path, kind, trash_path) in companions {
-                validate_imported_path_length(&path, known_folders)?;
-                if let Some(path) = trash_path.as_ref().filter(|p| !p.trim().is_empty()) {
-                    validate_imported_path_length(path, known_folders)?;
-                }
-                companions::validate_stored_fields(&name, &path, &kind)
-                    .map_err(|why| format!("Begleitdatei-Eintrag im Archiv abgelehnt ({why})"))?;
-                reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
-                    .map_err(|e| format!("Begleitdatei-Eintrag im Archiv abgelehnt: {}", e.message))?;
-                if let Some(trash_path) = trash_path.filter(|p| !p.trim().is_empty()) {
-                    reject_if_sensitive_path_expanded(Path::new(&trash_path), &trash_denylist)
-                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
-                    reject_if_outside_trash_dir(Path::new(&trash_path), &resolved_trash_dir)
-                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
-                }
-            }
-            drop(stmt);
-            // The paths show up in the sync settings and decide which files the sync skips,
-            // so a foreign backup must not bring an endless list or protected locations.
-            let copies_count: i64 = conn
-                .query_row("SELECT COUNT(*) FROM disk_sync_known_copies", [], |row| row.get(0))
-                .map_err(|e| e.to_string())?;
-            if copies_count as usize > crate::db::known_copies::MAX_KNOWN_COPIES {
-                return Err("Katalog-Datenbank enthaelt zu viele gemerkte Kopien".to_string());
-            }
-            let mut stmt = conn
-                .prepare("SELECT path, size_bytes, content_hash FROM disk_sync_known_copies")
-                .map_err(|e| e.to_string())?;
-            let copies = stmt
-                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))
-                .map_err(|e| e.to_string())?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| e.to_string())?;
-            for (path, size_bytes, content_hash) in copies {
-                crate::db::known_copies::validate_stored_fields(&path, size_bytes, &content_hash)
-                    .map_err(|why| format!("Eintrag gemerkter Kopien im Archiv abgelehnt ({why})"))?;
-                validate_imported_path_length(&path, known_folders)?;
-                reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
-                    .map_err(|e| format!("Eintrag gemerkter Kopien im Archiv abgelehnt: {}", e.message))?;
-            }
-            drop(stmt);
-            validate_blocked_auto_tags(&conn)?;
-            Ok(())
-        });
-
-    let _ = std::fs::remove_file(&tmp_path);
-    // Whatever the check found stays in the log; the user only learns that the
-    // file is not a usable catalog database.
-    result.map_err(|e| {
-        log::warn!(target: "backup", "invalid catalog database: {e}");
-        CmdError::coded(ErrorCode::BackupInvalidDatabase)
-    })
-}
-/// The names are shown in the settings and compared with every new tag, so a
-/// foreign backup must not bring an endless list or oversized or control text.
-fn validate_blocked_auto_tags(conn: &Connection) -> Result<(), String> {
-    let count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM blocked_auto_tags", [], |row| row.get(0))
-        .map_err(|e| e.to_string())?;
-    if count as usize > crate::db::blocked_tags::MAX_BLOCKED_TAGS {
-        return Err("Katalog-Datenbank enthaelt zu viele gesperrte Tags".to_string());
-    }
-    let names: Vec<String> = conn
-        .prepare("SELECT name FROM blocked_auto_tags")
-        .and_then(|mut s| s.query_map([], |r| r.get(0))?.collect())
-        .map_err(|e| e.to_string())?;
-    for name in names {
-        crate::db::blocked_tags::normalize_blocked_name(&name)
-            .map_err(|_| "Katalog-Datenbank enthaelt einen ungueltigen gesperrten Tag".to_string())?;
-    }
-    Ok(())
+    let directory = RestoreDirectory::new()?;
+    let roots: Vec<PathBuf> = known_folders.iter().map(PathBuf::from).collect();
+    catalog_restore::validate_catalog_db_bytes(
+        bytes,
+        sensitive_dirs,
+        &TrashPolicy {
+            desktop_trash: Some(trash_dir),
+            catalog_roots: &roots,
+        },
+        known_folders,
+        &directory.adapter(),
+    )
+    .map_err(Into::into)
 }
 /// Boundary used by `import_catalog`: a rejected backup file (bad schema,
 /// corrupted DB, a path escaping the trash/sensitive-dir checks, ...) is always
@@ -1434,63 +237,34 @@ fn replace_catalog_db_with_copy_fn(
         db::thingiverse::local_settings(&guard).map_err(|e| e.to_string())?
     };
 
-    // Migrate and sanitize the incoming DB while it's not active yet. Any error
-    // here leaves the old DB active and unchanged (fail closed).
+    // Prepare through the platform adapter before touching the active connection.
     {
+        let known_folders = {
+            let guard = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
+            imported_paths::folder_paths(&guard)?
+        };
+        let roots: Vec<PathBuf> = known_folders.iter().map(PathBuf::from).collect();
+        let directory = RestoreDirectory::new()?;
+        let bytes = std::fs::read(new_db_path).map_err(|e| e.to_string())?;
+        let mut prepared = catalog_restore::prepare_catalog(
+            &bytes,
+            &state.sensitive_dirs,
+            &TrashPolicy {
+                desktop_trash: Some(&state.trash_dir),
+                catalog_roots: &roots,
+            },
+            &known_folders,
+            &directory.adapter(),
+            &local_slicers,
+            &local_thingiverse,
+        )?;
+        // Materialize the prepared connection for the existing desktop copy/rollback path.
+        // SQLite's backup API includes committed data even when the copy uses WAL.
         let mut incoming = Connection::open(new_db_path).map_err(|e| e.to_string())?;
-        crate::db::run_migrations(&mut incoming).map_err(|e| e.to_string())?;
-        // A key in a file somebody handed over must never take effect. Outside the
-        // transaction because it vacuums the file; the on/off switch stays. Then the
-        // key of this computer goes back in (it is the only one that takes effect).
-        db::scrub_secrets(&incoming).map_err(|e| e.to_string())?;
-        db::thingiverse::keep_local(&incoming, &local_thingiverse).map_err(|e| e.to_string())?;
-        let tx = incoming.unchecked_transaction().map_err(|e| e.to_string())?;
-        sanitize_printer_connections(&tx)?;
-        sanitize_imported_file_identity(&tx)?;
-        // The base-dir preference is not portable, so settings restore leaves it untouched.
-        // Allow startup to adopt that location instead of one from the backup.
-        tx.execute(
-            "DELETE FROM app_settings WHERE key = ?1",
-            [super::folders::SETTING_CATALOG_BASE_DIR],
-        ).map_err(|e| e.to_string())?;
-        // DROP instead of DELETE: a malicious AFTER DELETE trigger would otherwise
-        // re-insert the row; DROP TABLE removes the triggers too. Second barrier next
-        // to the trigger rejection in validate_catalog_db_bytes. Schema as in
-        // migrations.rs.
-        tx.execute("DROP TABLE IF EXISTS registered_slicers", [])
+        let backup = rusqlite::backup::Backup::new(prepared.connection(), &mut incoming)
             .map_err(|e| e.to_string())?;
-        tx.execute(
-            "CREATE TABLE registered_slicers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                executable_path TEXT NOT NULL UNIQUE,
-                is_auto_detected INTEGER NOT NULL DEFAULT 0
-            )",
-            [],
-        )
-        .map_err(|e| e.to_string())?;
-        for slicer in &local_slicers {
-            db::insert_registered_slicer(
-                &tx,
-                &slicer.name,
-                &slicer.executable_path,
-                slicer.is_auto_detected,
-            )
+        backup.run_to_completion(100, std::time::Duration::from_millis(10), None)
             .map_err(|e| e.to_string())?;
-        }
-        // The count must match the saved local slicers exactly.
-        let final_count: i64 = tx
-            .query_row("SELECT COUNT(*) FROM registered_slicers", [], |row| row.get(0))
-            .map_err(|e| e.to_string())?;
-        if final_count as usize != local_slicers.len() {
-            return Err(format!(
-                "Sanierung von registered_slicers ergab eine unerwartete Zeilenzahl ({final_count} statt {}) - Restore abgebrochen",
-                local_slicers.len()
-            )
-            .into());
-        }
-        tx.commit().map_err(|e| e.to_string())?;
-        // Close the handle on new_db_path before copying.
     }
 
     // Only now swap the active DB; new_db_path is already sanitized.
@@ -1569,37 +343,12 @@ pub struct CatalogIssuesDto {
     pub orphaned: Vec<ModelFileDto>,
     pub duplicate_groups: Vec<Vec<ModelFileDto>>,
 }
-/// Groups `files` by `content_hash`, skipping `orphaned_ids` (a missing file must
-/// never become a group's "keep the oldest" anchor). Returns only groups with 2+
-/// members, each sorted oldest-first, groups sorted by their oldest member.
-fn group_duplicates(files: Vec<FileRecord>, orphaned_ids: &HashSet<i64>) -> Vec<Vec<FileRecord>> {
-    let mut by_hash: BTreeMap<String, Vec<FileRecord>> = BTreeMap::new();
-    for file in files {
-        if orphaned_ids.contains(&file.id) {
-            continue;
-        }
-        if let Some(hash) = file.content_hash.clone() {
-            by_hash.entry(hash).or_default().push(file);
-        }
-    }
+#[cfg(test)]
+use katalog_core::catalog_issues::group_duplicates;
+use katalog_core::catalog_issues::{self, IssueLimits, MissingProbe, StdMissingProbe};
 
-    let mut groups: Vec<Vec<FileRecord>> = by_hash
-        .into_values()
-        .filter(|group| group.len() >= 2)
-        .map(|mut group| {
-            group.sort_by(|a, b| a.imported_at.cmp(&b.imported_at));
-            group
-        })
-        .collect();
-    groups.sort_by(|a, b| a[0].imported_at.cmp(&b[0].imported_at));
-    groups
-}
 pub(super) fn is_missing(path: &Path) -> std::io::Result<bool> {
-    match std::fs::metadata(path) {
-        Ok(_) => Ok(false),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(true),
-        Err(e) => Err(e),
-    }
+    StdMissingProbe.is_missing(path)
 }
 
 #[tauri::command]
@@ -1608,21 +357,14 @@ pub fn scan_catalog_issues(state: State<AppState>) -> CmdResult<CatalogIssuesDto
     let files = db::list_files(&conn).map_err(|e| e.to_string())?;
     let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
 
-    // Only NotFound means "missing": PermissionDenied or IO errors (e.g. an
+    // Only NotFound means "missing" (StdMissingProbe): PermissionDenied or IO errors (e.g. an
     // unmounted network drive) must not mark files for deletion.
-    let mut orphaned_ids: HashSet<i64> = HashSet::new();
-    let mut orphaned: Vec<ModelFileDto> = Vec::new();
-    for file in &files {
-        if is_missing(Path::new(&file.path)).unwrap_or(false) {
-            orphaned_ids.insert(file.id);
-            orphaned.push(to_dto(file.clone(), &spools));
-        }
-    }
-
-    let duplicate_groups: Vec<Vec<ModelFileDto>> = group_duplicates(files, &orphaned_ids)
-        .into_iter()
-        .map(|group| group.into_iter().map(|f| to_dto(f, &spools)).collect())
-        .collect();
+    let issues = catalog_issues::scan_records(&files, &StdMissingProbe, IssueLimits::UNLIMITED);
+    let by_id: HashMap<i64, &FileRecord> = files.iter().map(|f| (f.id, f)).collect();
+    let dto = |id: &i64| to_dto(by_id[id].clone(), &spools);
+    let orphaned: Vec<ModelFileDto> = issues.orphaned.iter().map(dto).collect();
+    let duplicate_groups: Vec<Vec<ModelFileDto>> =
+        issues.duplicate_groups.iter().map(|group| group.iter().map(dto).collect()).collect();
 
     Ok(CatalogIssuesDto { orphaned, duplicate_groups })
 }
@@ -1630,6 +372,8 @@ pub fn scan_catalog_issues(state: State<AppState>) -> CmdResult<CatalogIssuesDto
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Stored paths in the spelling of this system: Windows refuses an imported path without a drive.
+    use crate::commands::native_test_path as n;
 
     #[cfg(not(windows))]
     #[test]
@@ -1642,14 +386,6 @@ mod tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
 
-    #[cfg(windows)]
-    #[test]
-    fn imported_names_reject_drive_syntax_and_devices_on_windows() {
-        for name in ["C:x.stl", "CON.stl", "LPT¹.stl"] {
-            assert!(validate_file_name(name).is_err());
-        }
-    }
-
     #[test]
     fn imported_empty_trash_paths_are_ignored() {
         let dir = unique_test_dir("empty_import_trash");
@@ -1658,17 +394,6 @@ mod tests {
             assert!(validate_catalog_db_bytes(&bytes, &[], &dir, &[]).is_ok(), "{trash:?}");
         }
         std::fs::remove_dir_all(dir).unwrap();
-    }
-
-    #[test]
-    fn imported_identity_is_recomputed_locally() {
-        let conn = db::connect_in_memory().unwrap();
-        let id = db::test_insert_minimal_file(&conn, "/tmp/x.3mf", None).unwrap();
-        conn.execute("UPDATE files SET content_hash = 'forged', imported_at = '1900'", []).unwrap();
-        sanitize_imported_file_identity(&conn).unwrap();
-        let file = db::get_file(&conn, id).unwrap().unwrap();
-        assert!(file.content_hash.is_none());
-        assert_eq!(file.imported_at, "1900");
     }
 
     #[test]
@@ -1743,7 +468,7 @@ mod tests {
     #[test]
     fn catalog_license_validation_accepts_old_exports_and_validates_new_values() {
         let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-            crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+            crate::db::test_insert_minimal_file(conn, &n("/model.3mf"), None).unwrap();
             conn.execute_batch("ALTER TABLE files DROP COLUMN license").unwrap();
             // The license step is the one before the source-column step.
             conn.pragma_update(None, "user_version", crate::db::SOURCE_COLUMNS_MIGRATION_VERSION - 2).unwrap();
@@ -1753,14 +478,14 @@ mod tests {
             (Some(" Free license ".to_string()), true), (Some("é".repeat(200)), true),
             (Some("a".repeat(201)), false), (Some("bad\0text".to_string()), false)] {
             let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-                let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+                let id = crate::db::test_insert_minimal_file(conn, &n("/model.3mf"), None).unwrap();
                 conn.execute("UPDATE files SET license = ?1 WHERE id = ?2", rusqlite::params![value, id]).unwrap();
             });
             let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
             assert_eq!(result.is_ok(), valid, "{result:?}");
         }
         let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-            let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+            let id = crate::db::test_insert_minimal_file(conn, &n("/model.3mf"), None).unwrap();
             conn.execute("UPDATE files SET license = X'1234' WHERE id = ?1", [id]).unwrap();
         });
         assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
@@ -2071,14 +796,14 @@ mod tests {
             ("source_profile_id", "12\u{202E}34".to_string(), false),
         ] {
             let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-                let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+                let id = crate::db::test_insert_minimal_file(conn, &n("/model.3mf"), None).unwrap();
                 conn.execute(&format!("UPDATE files SET {column} = ?1 WHERE id = ?2"), rusqlite::params![value, id]).unwrap();
             });
             let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
             assert_eq!(result.is_ok(), valid, "{column}: {result:?}");
         }
         let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-            let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+            let id = crate::db::test_insert_minimal_file(conn, &n("/model.3mf"), None).unwrap();
             conn.execute("UPDATE files SET source_model_id = X'1234' WHERE id = ?1", [id]).unwrap();
         });
         assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err(), "a BLOB is the wrong storage class");
@@ -2106,7 +831,7 @@ mod tests {
     fn imported_paths_have_a_length_limit() {
         for length in [4096, 4097] {
             let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
-                conn.execute("INSERT INTO folders (name, path) VALUES ('root', ?1)", [format!("/{}", "a".repeat(length - 1))]).unwrap();
+                conn.execute("INSERT INTO folders (name, path) VALUES ('root', ?1)", [n(&format!("/{}", "a".repeat(length - if cfg!(windows) { 3 } else { 1 })))]).unwrap();
             });
             let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
             assert_eq!(result.is_ok(), length == 4096, "{result:?}");
@@ -2168,122 +893,6 @@ mod tests {
             .unwrap();
         });
         assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
-    }
-    #[test]
-    fn sanitize_drops_foreign_addresses_and_pauses_the_rest() {
-        let conn = crate::db::connect_in_memory().unwrap();
-        conn.execute_batch(
-            "INSERT INTO printers (id, name, position) VALUES (1, 'A', 0), (2, 'B', 1), (3, 'C', 2);
-             INSERT INTO printer_connections (printer_id, kind, address, connected_since) VALUES
-                 (1, 'moonraker', '192.168.1.60', 1.0), (2, 'moonraker', '8.8.8.8', 1.0), (3, 'moonraker', 'sv08.local', 1.0);",
-        )
-        .unwrap();
-        sanitize_printer_connections(&conn).unwrap();
-        let rows: Vec<(i64, i64)> = conn
-            .prepare("SELECT printer_id, paused FROM printer_connections ORDER BY printer_id").unwrap()
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
-            .collect::<Result<_, _>>().unwrap();
-        assert_eq!(rows, vec![(1, 1), (3, 1)]);
-    }
-    #[test]
-    fn sanitize_resets_the_failure_counter() {
-        let conn = crate::db::connect_in_memory().unwrap();
-        conn.execute_batch(
-            "INSERT INTO printers (id, name, position) VALUES (1, 'A', 0);
-             INSERT INTO printer_connections (printer_id, kind, address, connected_since, failures, last_attempt_at)
-                 VALUES (1, 'moonraker', '192.168.1.60', 1.0, 7, 99.0);",
-        )
-        .unwrap();
-        sanitize_printer_connections(&conn).unwrap();
-        let row: (i64, Option<f64>) = conn
-            .query_row("SELECT failures, last_attempt_at FROM printer_connections", [], |r| Ok((r.get(0)?, r.get(1)?)))
-            .unwrap();
-        assert_eq!(row, (0, None));
-    }
-    #[test]
-    fn a_negative_failure_counter_is_rejected() {
-        let conn = Connection::open_in_memory().unwrap();
-        // A table without the CHECK, as a crafted backup could bring it.
-        conn.execute_batch(
-            "CREATE TABLE printers (id INTEGER, kind TEXT);
-             CREATE TABLE printer_jobs (outcome TEXT, state TEXT, auto_closed INTEGER, failure_reason TEXT, failure_note TEXT);
-             CREATE TABLE printer_connections (printer_id INTEGER, kind TEXT, paused INTEGER, failures INTEGER, api_key TEXT);
-             INSERT INTO printer_connections VALUES (1, 'moonraker', 0, -3, NULL);",
-        )
-        .unwrap();
-        assert!(validate_printer_link_rows(&conn).is_err());
-        conn.execute("UPDATE printer_connections SET failures = 0", []).unwrap();
-        assert!(validate_printer_link_rows(&conn).is_ok());
-    }
-    /// Prints as a crafted backup could bring them: a table without the CHECK clauses of ours.
-    fn jobs_table(rows: &str) -> Connection {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(&format!(
-            "CREATE TABLE printers (id INTEGER, kind TEXT);
-             CREATE TABLE printer_connections (printer_id INTEGER, kind TEXT, paused INTEGER, failures INTEGER, api_key TEXT);
-             CREATE TABLE printer_jobs (outcome TEXT, state TEXT, auto_closed INTEGER, failure_reason TEXT, failure_note TEXT);
-             {rows}"
-        ))
-        .unwrap();
-        conn
-    }
-    #[test]
-    fn the_failure_fields_of_a_print_are_accepted_when_they_follow_the_rules() {
-        let conn = jobs_table(
-            "INSERT INTO printer_jobs VALUES
-                 ('completed', 'open', 0, NULL, NULL),
-                 ('partial', 'open', 0, 'clog', 'nozzle'),
-                 ('partial', 'confirmed', 0, 'other', NULL),
-                 ('partial', 'ignored', 1, NULL, NULL),
-                 ('partial', 'ignored', 1, 'intentional', NULL),
-                 ('completed', 'ignored', 1, NULL, NULL);",
-        );
-        assert!(validate_printer_link_rows(&conn).is_ok());
-        for code in crate::printer_link::failure::FAILURE_REASONS {
-            conn.execute("UPDATE printer_jobs SET failure_reason = ?1 WHERE failure_reason = 'clog'", [code]).unwrap();
-            assert!(validate_printer_link_rows(&conn).is_ok(), "{code}");
-        }
-        let at_limit = "\u{e4}".repeat(crate::printer_link::failure::MAX_NOTE_CHARS);
-        conn.execute("UPDATE printer_jobs SET failure_note = ?1 WHERE failure_note = 'nozzle'", [at_limit]).unwrap();
-        assert!(validate_printer_link_rows(&conn).is_ok(), "200 characters, though more than 200 bytes");
-    }
-    #[test]
-    fn a_print_with_a_broken_failure_field_makes_the_backup_unusable() {
-        let too_long = "x".repeat(crate::printer_link::failure::MAX_NOTE_CHARS + 1);
-        let cases: Vec<(&str, String)> = vec![
-            ("unknown code", "('partial', 'open', 0, 'made_up', NULL)".into()),
-            ("code in another case", "('partial', 'open', 0, 'Clog', NULL)".into()),
-            ("empty code", "('partial', 'open', 0, '', NULL)".into()),
-            ("reason on a completed print", "('completed', 'open', 0, 'clog', NULL)".into()),
-            ("note too long", format!("('partial', 'open', 0, 'clog', '{too_long}')")),
-            ("flag out of range", "('partial', 'ignored', 2, NULL, NULL)".into()),
-            ("closed by the program but still open", "('partial', 'open', 1, NULL, NULL)".into()),
-            ("closed by the program but confirmed", "('completed', 'confirmed', 1, NULL, NULL)".into()),
-        ];
-        for (what, row) in cases {
-            let conn = jobs_table(&format!("INSERT INTO printer_jobs VALUES {row};"));
-            assert!(validate_printer_link_rows(&conn).is_err(), "{what}");
-        }
-    }
-    #[test]
-    fn a_damaged_api_key_value_is_rejected_and_an_absent_one_is_not() {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE printers (id INTEGER, kind TEXT);
-             CREATE TABLE printer_jobs (outcome TEXT, state TEXT, auto_closed INTEGER, failure_reason TEXT, failure_note TEXT);
-             CREATE TABLE printer_connections (printer_id INTEGER, kind TEXT, paused INTEGER, failures INTEGER, api_key TEXT);
-             INSERT INTO printer_connections VALUES (1, 'moonraker', 0, 0, NULL);",
-        )
-        .unwrap();
-        assert!(validate_printer_link_rows(&conn).is_ok(), "no key is fine");
-        for bad in ["abc\ndef", "abc def", "tab\there", "\u{e4}bc"] {
-            conn.execute("UPDATE printer_connections SET api_key = ?1", [bad]).unwrap();
-            assert!(validate_printer_link_rows(&conn).is_err(), "{bad:?}");
-        }
-        conn.execute("UPDATE printer_connections SET api_key = ?1", ["a".repeat(257)]).unwrap();
-        assert!(validate_printer_link_rows(&conn).is_err(), "too long");
-        conn.execute("UPDATE printer_connections SET api_key = ?1", ["a".repeat(256)]).unwrap();
-        assert!(validate_printer_link_rows(&conn).is_ok(), "at the limit");
     }
 
     #[test]
@@ -2371,8 +980,8 @@ mod tests {
             // Deliberately NO run_migrations() here - simulates a DB exported before the
             // parent_id/path migration.
             conn.execute(
-                "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('x', '/tmp/x.3mf', '3mf', 1, '2026-01-01T00:00:00Z')",
-                [],
+                "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('x', ?1, '3mf', 1, '2026-01-01T00:00:00Z')",
+                [n("/tmp/x.3mf")],
             ).unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
@@ -2484,6 +1093,50 @@ mod tests {
     }
 
     #[test]
+    fn catalog_backup_parity_entries_settings_rows_and_no_secret() {
+        const KEY: &str = "TVKEY-0123456789-abcdefghijkl";
+        let conn = crate::db::connect_in_memory().unwrap();
+        crate::db::test_insert_minimal_file(&conn, "/m/a.stl", None).unwrap();
+        crate::db::test_insert_minimal_file(&conn, "/m/b.stl", None).unwrap();
+        crate::db::thingiverse::set_enabled(&conn, true).unwrap();
+        crate::db::thingiverse::set_token(&conn, &katalog_core::thingiverse::Token::parse(KEY).unwrap()).unwrap();
+        let tables: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").unwrap()
+            .query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect();
+        let counts = |c: &Connection| -> Vec<(String, i64)> {
+            tables.iter().map(|t| (t.clone(), c.query_row(&format!("SELECT COUNT(*) FROM \"{t}\""), [], |r| r.get(0)).unwrap())).collect()
+        };
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        let before = counts(&conn);
+        let db = std::sync::Mutex::new(conn);
+        let dest = unique_test_dir("backup_parity").join("backup.zip");
+        let settings = r#"{"a":"1","b":null}"#;
+        write_catalog_backup(&db, &dest, settings).unwrap();
+
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(&dest).unwrap()).unwrap();
+        let names: Vec<String> = (0..zip.len()).map(|i| zip.by_index(i).unwrap().name().unwrap().to_string()).collect();
+        assert_eq!(names, ["catalog.db", "settings.json"]);
+        let mut stored = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("settings.json").unwrap(), &mut stored).unwrap();
+        assert_eq!(stored, settings);
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(&mut zip.by_name("catalog.db").unwrap(), &mut bytes).unwrap();
+        assert!(!bytes.windows(KEY.len()).any(|w| w == KEY.as_bytes()), "no API key in the copy");
+        let copy_path = dest.with_file_name("copy.db");
+        std::fs::write(&copy_path, bytes).unwrap();
+        let copy = Connection::open(&copy_path).unwrap();
+        // Everything but the scrubbed secret: the key row is the only difference.
+        let mut expected = before.clone();
+        expected.iter_mut().find(|(t, _)| t == "app_settings").unwrap().1 -= 1;
+        assert_eq!(counts(&copy), expected);
+        assert!(crate::db::thingiverse::get_enabled(&copy).unwrap());
+        assert_eq!(copy.query_row::<i64, _, _>("PRAGMA user_version", [], |r| r.get(0)).unwrap(), version);
+        assert_eq!(copy.query_row::<String, _, _>("PRAGMA integrity_check", [], |r| r.get(0)).unwrap(), "ok");
+        // The live catalog keeps its key.
+        assert!(crate::db::thingiverse::get_token(&db.lock().unwrap()).unwrap().is_some());
+    }
+
+    #[test]
     fn catalog_backup_replaces_an_existing_target_and_leaves_none_on_failure() {
         let db = std::sync::Mutex::new(crate::db::connect_in_memory().unwrap());
         let dir = unique_test_dir("backup_target");
@@ -2497,30 +1150,6 @@ mod tests {
         assert!(!missing.exists());
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn backup_zip_ignores_a_planted_temp_symlink_and_is_private() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = unique_test_dir("backup_zip_symlink");
-        let dest = dir.join("backup.zip");
-        let victim = dir.join("victim.txt");
-        std::fs::write(&victim, b"KEEP").unwrap();
-        std::os::unix::fs::symlink(&victim, dir.join("backup.zip.tmp")).unwrap();
-
-        write_zip_atomically(&dest, &[("catalog.db", b"DB"), ("settings.json", b"{}")]).unwrap();
-
-        assert_eq!(std::fs::read(&victim).unwrap(), b"KEEP");
-        assert_eq!(std::fs::metadata(&dest).unwrap().permissions().mode() & 0o777, 0o600);
-        let mut zip = zip::ZipArchive::new(std::fs::File::open(&dest).unwrap()).unwrap();
-        assert_eq!(zip.len(), 2);
-        assert_eq!(zip.by_name("catalog.db").unwrap().size(), 2);
-        let leftovers: Vec<_> = std::fs::read_dir(&dir)
-            .unwrap()
-            .map(|e| e.unwrap().file_name().into_string().unwrap())
-            .filter(|n| n.ends_with(".tmp") && n != "backup.zip.tmp")
-            .collect();
-        assert!(leftovers.is_empty(), "{leftovers:?}");
-    }
     #[cfg(unix)]
     #[test]
     fn temp_copy_for_validation_is_private_from_the_start() {
@@ -2559,21 +1188,7 @@ mod tests {
         let result = validate_with_timeout(std::fs::read(&tmp_path).unwrap());
         assert!(result.is_err());
     }
-    #[test]
-    fn validate_catalog_db_bytes_rejects_a_database_missing_a_required_table() {
-        // Valid DB with exactly one defect. `tags` instead of `files`, because `files`
-        // is queried earlier via COUNT; this way only validate_expected_schema can
-        // find the error.
-        let tmp_path = unique_test_db_path("validate_db_missing_table");
-        {
-            let conn = crate::db::connect(&tmp_path).unwrap(); // complete, current schema
-            conn.execute_batch("DROP TABLE tags;").unwrap();
-            assert!(validate_expected_schema(&conn).unwrap_err().contains("tags"));
-        }
-        let bytes = std::fs::read(&tmp_path).unwrap();
-        let err = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]).unwrap_err();
-        assert!(err.is(ErrorCode::BackupInvalidDatabase, &[]), "{err:?}");
-    }
+
     #[test]
     fn validate_catalog_db_bytes_rejects_a_database_missing_a_required_column() {
         // Same as above, but with exactly one column removed.
@@ -3019,24 +1634,7 @@ mod tests {
         let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "eine Spule mit NULL 'material' muss abgelehnt werden");
     }
-    #[test]
-    fn validate_catalog_db_bytes_rejects_a_folder_with_name_stored_as_blob() {
-        // A BLOB stays BLOB despite TEXT affinity. `folders.name` instead of
-        // `files.name`, because the latter is read earlier; this way the test only
-        // covers validate_column_types.
-        let tmp_path = unique_test_db_path("validate_db_folder_blob_name");
-        {
-            let conn = crate::db::connect(&tmp_path).unwrap();
-            conn.execute(
-                "INSERT INTO folders (name, path) VALUES (x'00010203', '/tmp/blob-name')",
-                [],
-            )
-            .unwrap();
-        }
-        let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
-        assert!(result.is_err(), "ein Ordner mit 'name' als BLOB-Speicherklasse muss abgelehnt werden");
-    }
+
     #[test]
     fn validate_catalog_db_bytes_accepts_a_full_catalog_with_data_in_every_table() {
         // A normally filled catalog (data in every table) must not be rejected.
@@ -3045,7 +1643,7 @@ mod tests {
             let mut conn = crate::db::connect(&tmp_path).unwrap();
 
             let folder_id =
-                crate::db::insert_folder_with_parent(&conn, "Projekte", None, "/tmp/Projekte").unwrap();
+                crate::db::insert_folder_with_parent(&conn, "Projekte", None, &n("/tmp/Projekte")).unwrap();
 
             let mut metadata = BTreeMap::new();
             metadata.insert("Slicer".to_string(), "Bambu Studio".to_string());
@@ -3053,7 +1651,7 @@ mod tests {
                 license: None,
                 source: Default::default(),
                 name: "Gehaeuse.3mf".to_string(),
-                path: "/tmp/Projekte/Gehaeuse.3mf".to_string(),
+                path: n("/tmp/Projekte/Gehaeuse.3mf"),
                 file_type: FileType::ThreeMf,
                 folder_id: Some(folder_id),
                 origin: "local".to_string(),
@@ -3259,217 +1857,6 @@ mod tests {
         assert!(conn.prepare("SELECT filament_colors FROM file_print_info").is_ok(), "the migration added the column");
     }
 
-    /// A backup whose print data tables carry no primary key, foreign key, NOT NULL or CHECK
-    /// (as a crafted file can), with one valid 3MF file (id 1) and one STL file (id 2); `setup`
-    /// adds the rows under test.
-    fn print_data_template() -> &'static [u8] {
-        // Creating a catalog is slow, so the base database is built once and copied per case.
-        static TEMPLATE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
-        TEMPLATE.get_or_init(|| {
-            backup_test_db_with(|conn| {
-                conn.execute_batch(
-                    "DROP TABLE file_print_plates;
-                     DROP TABLE file_print_info;
-                     CREATE TABLE file_print_info (
-                        file_id INTEGER, reader_version INTEGER, read_at TEXT, slice_state TEXT, settings_state TEXT,
-                        printer_model TEXT, bed_type TEXT, layer_height_mm REAL, nozzle_mm REAL, nozzle_mixed INTEGER,
-                        bed_temp_c REAL, bed_temp_mixed INTEGER, nozzle_temp_c REAL, nozzle_temp_mixed INTEGER,
-                        filament_colors TEXT);
-                     CREATE TABLE file_print_plates (
-                        file_id INTEGER, plate_index INTEGER, plate_name TEXT, print_seconds INTEGER,
-                        first_layer_seconds REAL, plate_bed_type TEXT);",
-                )
-                .unwrap();
-                crate::db::test_insert_minimal_file(conn, "/tmp/a.3mf", None).unwrap();
-                crate::db::test_insert_minimal_file(conn, "/tmp/b.stl", None).unwrap();
-                conn.execute("UPDATE files SET file_type = 'stl' WHERE id = 2", []).unwrap();
-            })
-            .0
-        })
-    }
-
-    /// Runs `setup` on a copy of the template and returns (the explicit print data check on
-    /// that database alone, the verdict of the whole restore validation on its bytes).
-    fn print_data_case(setup: impl FnOnce(&Connection)) -> (Result<(), String>, Result<(), String>) {
-        let path = unique_test_db_path("print_data_case");
-        std::fs::write(&path, print_data_template()).unwrap();
-        let explicit = {
-            let conn = Connection::open(&path).unwrap();
-            setup(&conn);
-            validate_print_info_rows(&conn)
-        };
-        let bytes = std::fs::read(&path).unwrap();
-        let _ = std::fs::remove_file(&path);
-        let restore = validate_catalog_db_bytes(&bytes, &[], &std::env::temp_dir(), &[]).map_err(|e| e.message);
-        (explicit, restore)
-    }
-
-    /// `INSERT INTO file_print_info` with valid defaults, some columns overridden.
-    fn info_row(conn: &Connection, file_id: i64, overrides: &[(&str, &str)]) {
-        let mut columns: Vec<(&str, String)> = vec![
-            ("file_id", file_id.to_string()),
-            ("reader_version", "1".into()),
-            ("read_at", "'2026-10-31T10:00:00+00:00'".into()),
-            ("slice_state", "'sliced'".into()),
-            ("settings_state", "'read'".into()),
-            ("nozzle_mixed", "0".into()),
-            ("bed_temp_mixed", "0".into()),
-            ("nozzle_temp_mixed", "0".into()),
-        ];
-        for (name, value) in overrides {
-            match columns.iter_mut().find(|(n, _)| n == name) {
-                Some(slot) => slot.1 = value.to_string(),
-                None => columns.push((name, value.to_string())),
-            }
-        }
-        let names: Vec<_> = columns.iter().map(|(n, _)| *n).collect();
-        let values: Vec<_> = columns.iter().map(|(_, v)| v.as_str()).collect();
-        conn.execute(&format!("INSERT INTO file_print_info ({}) VALUES ({})", names.join(", "), values.join(", ")), []).unwrap();
-    }
-
-    fn plate_row(conn: &Connection, file_id: i64, index: &str, overrides: &[(&str, &str)]) {
-        let mut columns: Vec<(&str, String)> = vec![("file_id", file_id.to_string()), ("plate_index", index.to_string())];
-        for (name, value) in overrides {
-            columns.push((name, value.to_string()));
-        }
-        let names: Vec<_> = columns.iter().map(|(n, _)| *n).collect();
-        let values: Vec<_> = columns.iter().map(|(_, v)| v.as_str()).collect();
-        conn.execute(&format!("INSERT INTO file_print_plates ({}) VALUES ({})", names.join(", "), values.join(", ")), []).unwrap();
-    }
-
-    #[test]
-    fn a_backup_with_valid_print_data_but_no_constraints_is_accepted() {
-        let (explicit, restore) = print_data_case(|conn| {
-            info_row(conn, 1, &[("printer_model", "'X1'"), ("layer_height_mm", "0.2"), ("nozzle_temp_c", "210"), ("bed_temp_c", "60"), ("nozzle_mixed", "1"), ("filament_colors", "'#ff0000 #00ff00'")]);
-            plate_row(conn, 1, "1", &[("print_seconds", "600"), ("first_layer_seconds", "12.5"), ("plate_name", "'A'")]);
-            plate_row(conn, 1, "2", &[]);
-        });
-        assert!(explicit.is_ok(), "{explicit:?}");
-        assert!(restore.is_ok(), "{restore:?}");
-    }
-
-    #[test]
-    fn a_backup_with_a_gcode_file_and_its_print_data_is_accepted() {
-        let (explicit, restore) = print_data_case(|conn| {
-            crate::db::test_insert_minimal_file(conn, "/tmp/c.gcode", None).unwrap();
-            conn.execute("UPDATE files SET file_type = 'gcode' WHERE id = 3", []).unwrap();
-            info_row(conn, 3, &[("printer_model", "'MK4'"), ("layer_height_mm", "0.2")]);
-            plate_row(conn, 3, "1", &[("print_seconds", "4200")]);
-        });
-        assert!(explicit.is_ok(), "{explicit:?}");
-        assert!(restore.is_ok(), "{restore:?}");
-    }
-
-    #[test]
-    fn a_gcode_row_with_a_reader_version_from_a_newer_build_is_rejected_but_a_3mf_row_of_that_version_is_not() {
-        // The G-code reader and the 3MF reader count their versions separately: version 2 does
-        // not exist for G-code yet, but it does for 3MF.
-        let too_new = (katalog_core::gcode::GCODE_READER_VERSION + 1).to_string();
-        let (explicit, restore) = print_data_case(|conn| {
-            crate::db::test_insert_minimal_file(conn, "/tmp/e.gcode", None).unwrap();
-            conn.execute("UPDATE files SET file_type = 'gcode' WHERE id = 3", []).unwrap();
-            info_row(conn, 3, &[("reader_version", too_new.as_str())]);
-        });
-        assert!(explicit.is_err(), "{explicit:?}");
-        assert!(restore.is_err());
-        let (explicit, restore) = print_data_case(|conn| info_row(conn, 1, &[("reader_version", too_new.as_str())]));
-        assert!(explicit.is_ok(), "{explicit:?}");
-        assert!(restore.is_ok(), "{restore:?}");
-    }
-
-    #[test]
-    fn a_backup_with_resin_and_gcode_rows_but_print_data_for_a_resin_file_is_rejected() {
-        let (explicit, restore) = print_data_case(|conn| {
-            crate::db::test_insert_minimal_file(conn, "/tmp/d.ctb", None).unwrap();
-            conn.execute("UPDATE files SET file_type = 'resin' WHERE id = 3", []).unwrap();
-            info_row(conn, 3, &[]);
-        });
-        assert!(explicit.is_err(), "print data belongs to 3MF and G-Code files only");
-        assert!(restore.is_err());
-    }
-
-    #[test]
-    fn a_backup_with_damaged_print_data_is_rejected_by_the_explicit_check() {
-        let many_plates = |conn: &Connection| {
-            for i in 1..=1025 {
-                plate_row(conn, 1, &i.to_string(), &[]);
-            }
-        };
-        type Setup = Box<dyn Fn(&Connection)>;
-        let cases: Vec<(&str, Setup)> = vec![
-            ("info row of a file that does not exist", Box::new(|c| info_row(c, 999, &[]))),
-            ("plate row of a file that does not exist", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 999, "1", &[]) })),
-            ("info row of a file that is no 3MF or G-Code", Box::new(|c| info_row(c, 2, &[]))),
-            ("two info rows for one file", Box::new(|c| { info_row(c, 1, &[]); info_row(c, 1, &[]) })),
-            ("two plate rows with the same index", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "2", &[]); plate_row(c, 1, "2", &[]) })),
-            ("plate index 0", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "0", &[]) })),
-            ("plate index -3", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "-3", &[]) })),
-            ("more plates than allowed", Box::new(move |c| { info_row(c, 1, &[]); many_plates(c) })),
-            ("unknown slice state", Box::new(|c| info_row(c, 1, &[("slice_state", "'x'")]))),
-            ("unknown settings state", Box::new(|c| info_row(c, 1, &[("settings_state", "'x'")]))),
-            ("reader version from a newer build", Box::new(|c| info_row(c, 1, &[("reader_version", "99")]))),
-            ("reader version 0", Box::new(|c| info_row(c, 1, &[("reader_version", "0")]))),
-            ("flag outside 0 and 1", Box::new(|c| info_row(c, 1, &[("nozzle_mixed", "2")]))),
-            ("nozzle temperature without print data", Box::new(|c| info_row(c, 1, &[("slice_state", "'no_slice_data'"), ("nozzle_temp_c", "210")]))),
-            ("bed temperature in an unreadable file", Box::new(|c| info_row(c, 1, &[("slice_state", "'unreadable'"), ("bed_temp_c", "60")]))),
-            ("mixed temperature flag without print data", Box::new(|c| info_row(c, 1, &[("slice_state", "'no_slice_data'"), ("nozzle_temp_mixed", "1")]))),
-            ("print time without print data", Box::new(|c| { info_row(c, 1, &[("slice_state", "'no_slice_data'")]); plate_row(c, 1, "1", &[("print_seconds", "600")]) })),
-            ("mixed flag with a number", Box::new(|c| info_row(c, 1, &[("nozzle_mixed", "1"), ("nozzle_mm", "0.4")]))),
-            ("layer height below zero", Box::new(|c| info_row(c, 1, &[("layer_height_mm", "-1")]))),
-            ("layer height 0", Box::new(|c| info_row(c, 1, &[("layer_height_mm", "0")]))),
-            ("nozzle 9 mm", Box::new(|c| info_row(c, 1, &[("nozzle_mm", "9")]))),
-            ("temperature 600", Box::new(|c| info_row(c, 1, &[("bed_temp_c", "600")]))),
-            ("print time 0", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "1", &[("print_seconds", "0")]) })),
-            ("print time below zero", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "1", &[("print_seconds", "-5")]) })),
-            ("first layer time 0", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "1", &[("first_layer_seconds", "0")]) })),
-            ("bed type with a control character", Box::new(|c| info_row(c, 1, &[("bed_type", "'x' || char(7)")]))),
-            ("printer model with 10000 characters", Box::new(|c| info_row(c, 1, &[("printer_model", "printf('%.*c', 10000, 'a')")]))),
-            ("plate name with a control character", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "1", &[("plate_name", "'a' || char(10)")]) })),
-            ("plate bed type with 10000 characters", Box::new(|c| { info_row(c, 1, &[]); plate_row(c, 1, "1", &[("plate_bed_type", "printf('%.*c', 10000, 'a')")]) })),
-            ("read time that is no date", Box::new(|c| info_row(c, 1, &[("read_at", "'garbage'")]))),
-            ("filament colors stored as a blob", Box::new(|c| info_row(c, 1, &[("filament_colors", "x'23666630303030'")]))),
-            ("filament colors that are only a number", Box::new(|c| info_row(c, 1, &[("filament_colors", "5")]))),
-            ("filament colors with 300 characters", Box::new(|c| info_row(c, 1, &[("filament_colors", "printf('%.*c', 300, 'a')")]))),
-            ("filament colors that are no color", Box::new(|c| info_row(c, 1, &[("filament_colors", "'red'")]))),
-            ("filament colors with an empty text", Box::new(|c| info_row(c, 1, &[("filament_colors", "''")]))),
-            ("33 filament colors", Box::new(|c| info_row(c, 1, &[("filament_colors", "trim(replace(printf('%.*c', 33, 'x'), 'x', '#aaaaaa '))")]))),
-            ("filament colors with a comma", Box::new(|c| info_row(c, 1, &[("filament_colors", "'#aaaaaa,#bbbbbb'")]))),
-            ("filament colors with a double space", Box::new(|c| info_row(c, 1, &[("filament_colors", "'#aaaaaa  #bbbbbb'")]))),
-            ("filament colors with a trailing space", Box::new(|c| info_row(c, 1, &[("filament_colors", "'#aaaaaa '")]))),
-            ("filament colors with alpha", Box::new(|c| info_row(c, 1, &[("filament_colors", "'#aaaaaaff'")]))),
-            ("filament colors in capitals", Box::new(|c| info_row(c, 1, &[("filament_colors", "'#AAAAAA'")]))),
-        ];
-        for (label, setup) in &cases {
-            // The restore refuses the backup, and it is the explicit check that does it
-            // (the other checks of the restore know nothing about these rules).
-            let (explicit, restore) = print_data_case(|conn| setup(conn));
-            assert!(restore.is_err(), "restore must refuse: {label}");
-            let message = explicit.expect_err(label);
-            assert!(message.contains("Druckdaten"), "{label}: {message}");
-        }
-    }
-
-    #[test]
-    fn foreign_key_check_alone_does_not_see_orphans_in_a_table_without_keys() {
-        // Why `validate_print_info_rows` exists: the table of a crafted backup declares no key.
-        let (bytes, _, _) = backup_test_db_with(|conn| {
-            conn.execute_batch(
-                "DROP TABLE file_print_plates;
-                 CREATE TABLE file_print_plates (file_id INTEGER, plate_index INTEGER, plate_name TEXT, print_seconds INTEGER, first_layer_seconds REAL, plate_bed_type TEXT);
-                 INSERT INTO file_print_plates (file_id, plate_index) VALUES (999, 1);",
-            )
-            .unwrap();
-        });
-        let path = unique_test_db_path("print_data_fk_probe");
-        std::fs::write(&path, &bytes).unwrap();
-        let conn = Connection::open(&path).unwrap();
-        conn.pragma_update(None, "foreign_keys", true).unwrap();
-        let violations: i64 = conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| r.get(0)).unwrap();
-        assert_eq!(violations, 0, "foreign_key_check sees nothing");
-        let _ = std::fs::remove_file(path);
-        assert!(validate_print_info_rows(&conn).is_err(), "the explicit check does");
-    }
-
     // --- bundle tables (bundles, bundle_members) ---
 
     #[test]
@@ -3477,7 +1864,7 @@ mod tests {
         let (source, dir) = state_with_catalog("backup_bundles_a");
         let ids: Vec<i64> = {
             let conn = source.db.lock().unwrap();
-            let ids: Vec<i64> = (0..3).map(|i| db::test_insert_minimal_file(&conn, &format!("/tmp/b{i}.3mf"), None).unwrap()).collect();
+            let ids: Vec<i64> = (0..3).map(|i| db::test_insert_minimal_file(&conn, &n(&format!("/tmp/b{i}.3mf")), None).unwrap()).collect();
             let bundle = db::bundles::create_bundle(&conn, "Vase", db::bundles::BundleKind::Parts, &[ids[2], ids[0], ids[1]], "2026-11-04T10:00:00Z").unwrap();
             db::bundles::update_bundle_member(&conn, ids[0], Some("Lid"), false).unwrap();
             assert!(db::bundles::get_bundle(&conn, bundle).unwrap().is_some());
@@ -3505,7 +1892,7 @@ mod tests {
         let (old, dir) = state_with_catalog("backup_bundles_old_a");
         {
             let conn = old.db.lock().unwrap();
-            db::test_insert_minimal_file(&conn, "/tmp/old.3mf", None).unwrap();
+            db::test_insert_minimal_file(&conn, &n("/tmp/old.3mf"), None).unwrap();
             conn.execute_batch("DROP TABLE bundle_members; DROP TABLE bundles").unwrap();
             conn.pragma_update(None, "user_version", 56).unwrap(); // the version before the bundle tables (a development number, not derived from the current one)
         }
@@ -3526,91 +1913,6 @@ mod tests {
         let count = |table: &str| conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get::<_, i64>(0)).unwrap();
         assert_eq!((count("bundles"), count("bundle_members")), (0, 0), "tables exist and are empty");
         assert_eq!(db::list_files(&conn).unwrap().len(), 1, "the file itself is kept");
-    }
-
-    /// A backup whose bundle tables carry no key and no CHECK (as a crafted file can), with two
-    /// files (ids 1 and 2) and one valid bundle (id 1) of both; `setup` adds the rows under test.
-    fn bundle_template() -> &'static [u8] {
-        static TEMPLATE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
-        TEMPLATE.get_or_init(|| {
-            backup_test_db_with(|conn| {
-                conn.execute_batch(
-                    "DROP TABLE bundle_members;
-                     DROP TABLE bundles;
-                     CREATE TABLE bundles (id INTEGER, name TEXT, kind TEXT, created_at TEXT);
-                     CREATE TABLE bundle_members (file_id INTEGER, bundle_id INTEGER, position INTEGER, label TEXT);",
-                )
-                .unwrap();
-                crate::db::test_insert_minimal_file(conn, "/tmp/a.3mf", None).unwrap();
-                crate::db::test_insert_minimal_file(conn, "/tmp/b.3mf", None).unwrap();
-            })
-            .0
-        })
-    }
-
-    /// Runs `setup` on a copy of the template and returns (the explicit bundle check on that
-    /// database alone, the verdict of the whole restore validation on its bytes).
-    fn bundle_case(setup: &str) -> (Result<(), String>, Result<(), String>) {
-        let path = unique_test_db_path("bundle_case");
-        std::fs::write(&path, bundle_template()).unwrap();
-        let explicit = {
-            let conn = Connection::open(&path).unwrap();
-            conn.execute_batch(setup).unwrap();
-            validate_bundle_rows(&conn)
-        };
-        let bytes = std::fs::read(&path).unwrap();
-        let _ = std::fs::remove_file(&path);
-        let restore = validate_catalog_db_bytes(&bytes, &[], &std::env::temp_dir(), &[]).map_err(|e| e.message);
-        (explicit, restore)
-    }
-
-    const GOOD_BUNDLE: &str = "INSERT INTO bundles VALUES (1, 'Vase', 'parts', 't');
-        INSERT INTO bundle_members VALUES (1, 1, 0, NULL), (2, 1, 1, 'Lid');";
-
-    #[test]
-    fn the_bundle_template_with_a_valid_bundle_is_accepted() {
-        let (explicit, restore) = bundle_case(GOOD_BUNDLE);
-        assert_eq!(explicit, Ok(()));
-        assert_eq!(restore, Ok(()));
-    }
-
-    #[test]
-    fn a_bundle_with_fewer_than_two_members_is_accepted_because_the_app_can_leave_one() {
-        for setup in [
-            "INSERT INTO bundles VALUES (1, 'Alone', 'parts', 't'); INSERT INTO bundle_members VALUES (1, 1, 0, NULL);",
-            "INSERT INTO bundles VALUES (1, 'Empty', 'variants', 't');",
-        ] {
-            let (explicit, restore) = bundle_case(setup);
-            assert_eq!(explicit, Ok(()), "{setup}");
-            assert_eq!(restore, Ok(()), "{setup}");
-        }
-    }
-
-    #[test]
-    fn crafted_bundle_rows_are_rejected() {
-        let many = {
-            let members: Vec<String> = (0..201).map(|i| format!("({}, 1, {i}, NULL)", 100 + i)).collect();
-            format!("INSERT INTO bundles VALUES (1, 'Big', 'parts', 't'); INSERT INTO bundle_members VALUES {};", members.join(", "))
-        };
-        let cases: Vec<(&str, String)> = vec![
-            ("unknown kind", "INSERT INTO bundles VALUES (1, 'A', 'other', 't');".into()),
-            ("kind NULL", "INSERT INTO bundles VALUES (1, 'A', NULL, 't');".into()),
-            ("member without a file", "INSERT INTO bundles VALUES (1, 'A', 'parts', 't'); INSERT INTO bundle_members VALUES (999, 1, 0, NULL);".into()),
-            ("member without a bundle", "INSERT INTO bundle_members VALUES (1, 77, 0, NULL);".into()),
-            ("file without a number", "INSERT INTO bundles VALUES (1, 'A', 'parts', 't'); INSERT INTO bundle_members VALUES (NULL, 1, 0, NULL);".into()),
-            ("name empty", "INSERT INTO bundles VALUES (1, '  ', 'parts', 't');".into()),
-            ("name with a control character", "INSERT INTO bundles VALUES (1, 'A' || char(7), 'parts', 't');".into()),
-            ("name too long", format!("INSERT INTO bundles VALUES (1, '{}', 'parts', 't');", "n".repeat(121))),
-            ("label too long", format!("{GOOD_BUNDLE} UPDATE bundle_members SET label = '{}' WHERE file_id = 1;", "l".repeat(61))),
-            ("label with a control character", format!("{GOOD_BUNDLE} UPDATE bundle_members SET label = 'a' || char(10) || 'b' WHERE file_id = 1;")),
-            ("file in two bundles", format!("{GOOD_BUNDLE} INSERT INTO bundles VALUES (2, 'B', 'parts', 't'); INSERT INTO bundle_members VALUES (1, 2, 0, NULL);")),
-            ("negative position", format!("{GOOD_BUNDLE} UPDATE bundle_members SET position = -1 WHERE file_id = 2;")),
-            ("201 members", many),
-        ];
-        for (what, setup) in cases {
-            let (_, restore) = bundle_case(&setup);
-            assert!(restore.is_err(), "{what}: the restore validation must refuse it");
-        }
     }
 
     /// A backup whose `slicer_reports` carries no CHECK (as a crafted file can); `setup` adds the rows under test.
@@ -3663,70 +1965,6 @@ mod tests {
     }
 
     #[test]
-    fn crafted_bundle_rows_are_refused_by_the_explicit_check_itself() {
-        for (what, setup) in [
-            ("unknown kind", "INSERT INTO bundles VALUES (1, 'A', 'other', 't');"),
-            ("member without a file", "INSERT INTO bundles VALUES (1, 'A', 'parts', 't'); INSERT INTO bundle_members VALUES (999, 1, 0, NULL);"),
-            ("file in two bundles", "INSERT INTO bundles VALUES (1, 'A', 'parts', 't'), (2, 'B', 'parts', 't'); INSERT INTO bundle_members VALUES (1, 1, 0, NULL), (1, 2, 0, NULL);"),
-            ("negative position", "INSERT INTO bundles VALUES (1, 'A', 'parts', 't'); INSERT INTO bundle_members VALUES (1, 1, -3, NULL);"),
-            ("control character in the name", "INSERT INTO bundles VALUES (1, 'A' || char(7), 'parts', 't');"),
-        ] {
-            let (explicit, _) = bundle_case(setup);
-            let message = explicit.expect_err(what);
-            assert!(message.contains("Buendel"), "{what}: {message}");
-        }
-    }
-
-    #[test]
-    fn a_label_stored_as_a_blob_is_refused_by_the_column_types() {
-        let setup = format!("{GOOD_BUNDLE} UPDATE bundle_members SET label = x'4c6964' WHERE file_id = 2;");
-        let path = unique_test_db_path("bundle_blob_label");
-        std::fs::write(&path, bundle_template()).unwrap();
-        let types = {
-            let conn = Connection::open(&path).unwrap();
-            conn.execute_batch(&setup).unwrap();
-            validate_column_types(&conn)
-        };
-        let _ = std::fs::remove_file(&path);
-        let message = types.expect_err("a BLOB label");
-        assert!(message.contains("bundle_members") && message.contains("label"), "{message}");
-        assert!(bundle_case(&setup).1.is_err(), "and the whole restore validation refuses it");
-    }
-
-    #[test]
-    fn column_types_covers_every_table_in_required_columns() {
-        for (table, _) in REQUIRED_COLUMNS {
-            assert!(
-                COLUMN_TYPES.iter().any(|(t, _, _, _)| t == table),
-                "COLUMN_TYPES hat keinen Eintrag fuer Tabelle '{table}' aus REQUIRED_COLUMNS - neue Tabellen muessen hier ergaenzt werden"
-            );
-        }
-    }
-    #[test]
-    fn column_types_covers_known_non_optional_columns_read_as_rust_values() {
-        // COLUMN_TYPES must contain at least these typed columns.
-        let must_have: &[(&str, &str)] = &[
-            ("files", "name"), ("files", "path"), ("files", "file_type"), ("files", "imported_at"), ("files", "favorite"),
-            ("folders", "name"), ("folders", "path"),
-            ("tags", "name"), ("tags", "color_hue"),
-            ("file_metadata", "label"), ("file_metadata", "value"),
-            ("filament_spools", "material"), ("filament_spools", "diameter_mm"),
-            ("filament_spools", "original_weight_g"), ("filament_spools", "remaining_weight_g"),
-            ("printers", "name"), ("printers", "kind"),
-            ("material_units", "printer_id"), ("material_units", "name"), ("material_units", "kind"), ("material_units", "slot_count"),
-            ("collections", "name"),
-            ("registered_slicers", "name"), ("registered_slicers", "executable_path"), ("registered_slicers", "is_auto_detected"),
-            ("file_tags", "file_id"),
-            ("collection_files", "file_id"),
-        ];
-        for (table, column) in must_have {
-            assert!(
-                COLUMN_TYPES.iter().any(|(t, c, _, _)| t == table && c == column),
-                "COLUMN_TYPES hat keinen Eintrag fuer '{table}.{column}'"
-            );
-        }
-    }
-    #[test]
     fn restore_forgets_catalog_location_and_allows_current_location() {
         for saved in [Some("/backup/location-a"), None] {
             let dir = unique_test_dir("restore_catalog_location");
@@ -3772,8 +2010,8 @@ mod tests {
         new_conn
             .execute(
                 "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
-                 VALUES ('new.3mf', '/incoming/new.3mf', '3mf', 42, '2026-09-13T00:00:00Z')",
-                [],
+                 VALUES ('new.3mf', ?1, '3mf', 42, '2026-09-13T00:00:00Z')",
+                [n("/incoming/new.3mf")],
             )
             .expect("seed new db with a marker row");
         new_conn.execute("UPDATE files SET content_hash = 'forged'", []).unwrap();
@@ -3882,8 +2120,8 @@ mod tests {
         old_conn
             .execute(
                 "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
-                 VALUES ('old.3mf', '/old/old.3mf', '3mf', 7, '2026-09-13T00:00:00Z')",
-                [],
+                 VALUES ('old.3mf', ?1, '3mf', 7, '2026-09-13T00:00:00Z')",
+                [n("/old/old.3mf")],
             )
             .expect("seed old db with a marker row");
         drop(old_conn);
@@ -3936,8 +2174,8 @@ mod tests {
         old_conn
             .execute(
                 "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
-                 VALUES ('old.3mf', '/old/old.3mf', '3mf', 7, '2026-09-13T00:00:00Z')",
-                [],
+                 VALUES ('old.3mf', ?1, '3mf', 7, '2026-09-13T00:00:00Z')",
+                [n("/old/old.3mf")],
             )
             .expect("seed old db with a marker row");
         drop(old_conn);
@@ -3949,8 +2187,8 @@ mod tests {
         new_conn
             .execute(
                 "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
-                 VALUES ('new.3mf', '/incoming/new.3mf', '3mf', 42, '2026-09-13T00:00:00Z')",
-                [],
+                 VALUES ('new.3mf', ?1, '3mf', 42, '2026-09-13T00:00:00Z')",
+                [n("/incoming/new.3mf")],
             )
             .expect("seed new db with a marker row");
         drop(new_conn);
@@ -4222,7 +2460,7 @@ mod tests {
             &dir.join("modell.3mf").to_string_lossy(),
             Some(&dir.join("1-modell.3mf").to_string_lossy()),
         );
-        let result = validate_catalog_db_bytes(&bytes, &[std::path::PathBuf::from("/etc")], &dir, &[]);
+        let result = validate_catalog_db_bytes(&bytes, &[std::path::PathBuf::from(n("/etc"))], &dir, &[]);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(result.is_ok(), "a legitimate backup must still import: {result:?}");
     }
@@ -4382,28 +2620,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&sensitive_root);
         assert!(result.is_err(), "must reject an imported trash_path pointing into a sensitive directory");
     }
-    #[test]
-    fn validate_file_name_rejects_separators_and_parent_dir_sequences() {
-        assert!(validate_file_name("modell.3mf").is_ok());
-        assert!(validate_file_name("Modell mit Leerzeichen (v2).stl").is_ok());
-        assert!(validate_file_name("").is_err());
-        assert!(validate_file_name("   ").is_err());
-        assert!(validate_file_name("../evil.3mf").is_err());
-        assert!(validate_file_name("sub/evil.3mf").is_err());
-        assert!(validate_file_name("sub\\evil.3mf").is_err());
-        assert!(validate_file_name("..").is_err());
-    }
-    #[test]
-    fn reject_oversized_zip_entry_uses_the_declared_uncompressed_size() {
-        assert!(reject_oversized_zip_entry("catalog.db", 10, 100).is_ok());
-        assert!(reject_oversized_zip_entry("catalog.db", 100, 100).is_ok());
-        let err = reject_oversized_zip_entry("catalog.db", 101, 100).unwrap_err();
-        assert!(err.expected, "an oversized entry is about the user's archive, not a fault");
-        assert!(err.is(ErrorCode::BackupEntryTooLarge, &["catalog.db", "1", "0"]), "{err:?}");
-        // The size is rounded up to whole megabytes, so a 1.5 MB entry reads as 2 MB.
-        let err = reject_oversized_zip_entry("settings.json", 3 * 1024 * 1024 / 2, 1024 * 1024).unwrap_err();
-        assert!(err.is(ErrorCode::BackupEntryTooLarge, &["settings.json", "2", "1"]), "{err:?}");
-    }
 
     fn zip_bytes_with(entries: &[(&str, &[u8])]) -> Vec<u8> {
         use std::io::Write;
@@ -4451,19 +2667,6 @@ mod tests {
         let (db_bytes, settings_json) = read_catalog_archive(std::io::Cursor::new(bytes)).expect("legacy backup readable");
         assert!(db_bytes.starts_with(b"SQLite format 3\0"));
         assert_eq!(settings_json, r#"{"language":"de","theme":"dark"}"#);
-    }
-
-    #[test]
-    fn read_catalog_archive_enforces_the_size_limit_on_real_entries() {
-        let at_limit = vec![b' '; MAX_IMPORT_SETTINGS_BYTES as usize];
-        let ok = zip_bytes_with(&[("catalog.db", b"x"), ("settings.json", &at_limit)]);
-        assert!(read_catalog_archive(std::io::Cursor::new(ok)).is_ok());
-
-        let too_big = vec![b' '; MAX_IMPORT_SETTINGS_BYTES as usize + 1];
-        let bad = zip_bytes_with(&[("catalog.db", b"x"), ("settings.json", &too_big)]);
-        let err = read_catalog_archive(std::io::Cursor::new(bad)).unwrap_err();
-        assert!(err.expected);
-        assert!(err.is(ErrorCode::BackupEntryTooLarge, &["settings.json", "2", "1"]), "{err:?}");
     }
 
     #[test]
@@ -4840,6 +3043,8 @@ mod tests {
 #[cfg(test)]
 mod companion_tests {
     use super::*;
+    // Stored paths in the spelling of this system: Windows refuses an imported path without a drive.
+    use crate::commands::native_test_path as n;
 
     fn state_with_catalog(name: &str) -> (AppState, PathBuf) {
         let dir = unique_test_dir(name);
@@ -4868,16 +3073,77 @@ mod companion_tests {
     fn with_companion(conn: &Connection, name: &str, path: &str, kind: &str, trash_path: Option<&str>) {
         // A crafted backup need not carry the CHECK constraints.
         conn.pragma_update(None, "ignore_check_constraints", true).unwrap();
-        let id = crate::db::test_insert_minimal_file(conn, "/catalog/Foo.3mf", None).unwrap();
+        let id = crate::db::test_insert_minimal_file(conn, &n("/catalog/Foo.3mf"), None).unwrap();
         conn.execute(
             "INSERT INTO companion_files (file_id, name, path, kind, added_at, deleted_at, trash_path) VALUES (?1, ?2, ?3, ?4, 'now', ?5, ?6)",
-            rusqlite::params![id, name, path, kind, trash_path.map(|_| "2026-01-01T00:00:00+00:00"), trash_path],
+            rusqlite::params![id, name, n(path), kind, trash_path.map(|_| "2026-01-01T00:00:00+00:00"), trash_path.map(n)],
         )
         .unwrap();
     }
 
     fn validate(bytes: &[u8], trash: &Path) -> CmdResult<()> {
         validate_catalog_db_bytes(bytes, &[], trash, &[])
+    }
+
+    #[test]
+    fn restore_uses_only_locally_known_catalog_roots_for_folder_trash() {
+        let (source, dir) = state_with_catalog("backup_folder_trash_source");
+        let root = dir.join("models");
+        std::fs::create_dir_all(root.join(".katalog-papierkorb")).unwrap();
+        let trash_path = root.join(".katalog-papierkorb/1-0123abcd-model.3mf");
+        {
+            let conn = source.db.lock().unwrap();
+            let id = db::test_insert_minimal_file(&conn, root.join("model.3mf").to_str().unwrap(), None).unwrap();
+            assert_eq!(id, 1);
+            conn.execute("UPDATE files SET deleted_at = 't', trash_path = ?1 WHERE id = 1", [trash_path.to_str().unwrap()]).unwrap();
+            // A folder in the incoming backup cannot authorize its own trash path.
+            conn.execute("INSERT INTO folders (name, path) VALUES ('models', ?1)", [root.to_str().unwrap()]).unwrap();
+        }
+        let incoming = dir.join("incoming.db");
+        std::fs::copy(&source.db_path, &incoming).unwrap();
+        let bytes = std::fs::read(&incoming).unwrap();
+        let (target, _target_dir) = state_with_catalog("backup_folder_trash_target");
+        assert!(validate_backup_for_import(&bytes, &[], &target.trash_dir, &[]).is_err());
+        assert!(replace_catalog_db(&target, &incoming).is_err());
+        {
+            let conn = target.db.lock().unwrap();
+            assert!(db::list_files(&conn).unwrap().is_empty());
+            conn.execute("INSERT INTO folders (name, path) VALUES ('models', ?1)", [root.to_str().unwrap()]).unwrap();
+        }
+        let known = vec![root.to_string_lossy().into_owned()];
+        validate_backup_for_import(&bytes, &[], &target.trash_dir, &known).unwrap();
+        replace_catalog_db(&target, &incoming).unwrap();
+        let conn = target.db.lock().unwrap();
+        let restored: String = conn.query_row("SELECT trash_path FROM files WHERE id = 1", [], |row| row.get(0)).unwrap();
+        assert_eq!(restored, trash_path.to_string_lossy());
+    }
+
+    #[test]
+    fn catalog_lock_survives_replace_catalog_db() {
+        use crate::db::instance_lock::{InstanceLock, LockError};
+        let (target, target_dir) = state_with_catalog("backup_lock_target");
+        let (source, source_dir) = state_with_catalog("backup_lock_source");
+        let lock = InstanceLock::acquire(&target.db_path, "desktop").unwrap();
+        let sidecar = InstanceLock::path_for(&target.db_path).unwrap();
+        // Unix locks are advisory, so the owner's line is readable while the lock is held.
+        // A Windows lock keeps every other handle from reading it; there size and time
+        // show that the file was not rewritten.
+        let observed = |sidecar: &Path| {
+            let meta = std::fs::metadata(sidecar).unwrap();
+            let text = if cfg!(windows) { String::new() } else { std::fs::read_to_string(sidecar).unwrap() };
+            (text, meta.len(), meta.modified().unwrap())
+        };
+        let metadata = observed(&sidecar);
+        let incoming = source.db_path.clone();
+        drop(source);
+        replace_catalog_db(&target, &incoming).unwrap();
+        assert_eq!(observed(&sidecar), metadata);
+        assert!(matches!(InstanceLock::acquire(&target.db_path, "server"), Err(LockError::InUse)));
+        drop(lock);
+        drop(InstanceLock::acquire(&target.db_path, "server").unwrap());
+        drop(target);
+        std::fs::remove_dir_all(target_dir).unwrap();
+        std::fs::remove_dir_all(source_dir).unwrap();
     }
 
     #[test]
@@ -4904,7 +3170,7 @@ mod companion_tests {
         let restored: (String, String, String) = conn
             .query_row("SELECT name, path, kind FROM companion_files", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
             .unwrap();
-        assert_eq!(restored, ("pic.png".into(), "/catalog/Foo_extras/pic.png".into(), "image".into()));
+        assert_eq!(restored, ("pic.png".into(), n("/catalog/Foo_extras/pic.png"), "image".into()));
         let count = |table: &str| conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get::<_, i64>(0)).unwrap();
         assert_eq!((count("source_folders"), count("source_rejected")), (1, 1));
         assert!(crate::db::sources::source_check_on_start(&conn).unwrap());
@@ -4915,7 +3181,7 @@ mod companion_tests {
         let (old, dir) = state_with_catalog("backup_companion_old_a");
         {
             let conn = old.db.lock().unwrap();
-            let id = crate::db::test_insert_minimal_file(&conn, "/catalog/old.3mf", None).unwrap();
+            let id = crate::db::test_insert_minimal_file(&conn, &n("/catalog/old.3mf"), None).unwrap();
             conn.execute("UPDATE files SET creator = 'Jane' WHERE id = ?1", [id]).unwrap();
             conn.execute_batch("DROP TABLE companion_files; DROP TABLE source_folders; DROP TABLE source_rejected").unwrap();
             conn.pragma_update(None, "user_version", crate::db::SOURCE_COLUMNS_MIGRATION_VERSION).unwrap();
@@ -4967,7 +3233,7 @@ mod companion_tests {
     #[test]
     fn a_companion_row_in_a_protected_folder_is_rejected() {
         let (bytes, trash) = catalog_bytes(|conn| with_companion(conn, "a.png", "/home/user/.config/autostart_extras/a.png", "image", None));
-        assert!(validate_catalog_db_bytes(&bytes, &[PathBuf::from("/home/user/.config")], &trash, &[]).is_err());
+        assert!(validate_catalog_db_bytes(&bytes, &[PathBuf::from(n("/home/user/.config"))], &trash, &[]).is_err());
         assert!(validate(&bytes, &trash).is_ok(), "counter-check: allowed when nothing is protected there");
     }
 
@@ -5008,7 +3274,7 @@ mod companion_tests {
         let (old, dir) = state_with_catalog("backup_blocked_tags_old_a");
         {
             let conn = old.db.lock().unwrap();
-            let id = crate::db::test_insert_minimal_file(&conn, "/catalog/old.3mf", None).unwrap();
+            let id = crate::db::test_insert_minimal_file(&conn, &n("/catalog/old.3mf"), None).unwrap();
             conn.execute("UPDATE files SET creator = 'Jane' WHERE id = ?1", [id]).unwrap();
             conn.execute_batch("DROP TABLE blocked_auto_tags").unwrap();
             conn.pragma_update(None, "user_version", crate::db::BLOCKED_AUTO_TAGS_MIGRATION_VERSION - 1).unwrap();
@@ -5087,7 +3353,7 @@ mod companion_tests {
     fn insert_known_copy(conn: &Connection, path: &str, size: i64, hash: &str) {
         conn.execute(
             "INSERT INTO disk_sync_known_copies (path, size_bytes, content_hash, noted_at) VALUES (?1, ?2, ?3, 't')",
-            rusqlite::params![path, size, hash],
+            rusqlite::params![n(path), size, hash],
         )
         .unwrap();
     }
@@ -5097,7 +3363,7 @@ mod companion_tests {
         let (source, dir) = state_with_catalog("backup_known_copies_a");
         {
             let conn = source.db.lock().unwrap();
-            db::known_copies::note_known_copy(&conn, "/models/copy.3mf", 42, COPY_HASH, "2026-11-01T10:00:00Z").unwrap();
+            db::known_copies::note_known_copy(&conn, &n("/models/copy.3mf"), 42, COPY_HASH, "2026-11-01T10:00:00Z").unwrap();
         }
         let zip_path = dir.join("backup.zip");
         write_catalog_backup(&source.db, &zip_path, "{}").unwrap();
@@ -5112,7 +3378,7 @@ mod companion_tests {
         let conn = target.db.lock().unwrap();
         let rows = db::known_copies::list_known_copies(&conn).unwrap();
         assert_eq!(rows.len(), 1);
-        assert_eq!((rows[0].path.as_str(), rows[0].size_bytes, rows[0].content_hash.as_str()), ("/models/copy.3mf", 42, COPY_HASH));
+        assert_eq!((rows[0].path.as_str(), rows[0].size_bytes, rows[0].content_hash.as_str()), (n("/models/copy.3mf").as_str(), 42, COPY_HASH));
     }
 
     #[test]
@@ -5120,7 +3386,7 @@ mod companion_tests {
         let (old, dir) = state_with_catalog("backup_known_copies_old_a");
         {
             let conn = old.db.lock().unwrap();
-            let id = crate::db::test_insert_minimal_file(&conn, "/catalog/old.3mf", None).unwrap();
+            let id = crate::db::test_insert_minimal_file(&conn, &n("/catalog/old.3mf"), None).unwrap();
             conn.execute("UPDATE files SET creator = 'Jane' WHERE id = ?1", [id]).unwrap();
             conn.execute_batch("DROP TABLE disk_sync_known_copies").unwrap();
             conn.pragma_update(None, "user_version", 54).unwrap();
@@ -5167,7 +3433,7 @@ mod companion_tests {
     #[test]
     fn a_known_copy_in_a_protected_location_is_rejected() {
         let (bytes, trash) = catalog_bytes(|conn| insert_known_copy(conn, "/protected/dir/a.3mf", 1, COPY_HASH));
-        let sensitive = [PathBuf::from("/protected")];
+        let sensitive = [PathBuf::from(n("/protected"))];
         assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
         assert!(validate_catalog_db_bytes(&bytes, &[], &trash, &[]).is_ok(), "counter-check: without the protection the row is fine");
     }

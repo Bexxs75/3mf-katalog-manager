@@ -20,8 +20,14 @@ Kompatibilitäts-Fork; Änderungen und Herkunft stehen in
   LGPL-2.1 §6 verlangte Austauschmechanismus erhalten.
 - **Quellcode:** Der OCCT-Quellcode ist unter
   <https://github.com/Open-Cascade-SAS/OCCT> verfügbar. Für ein konkretes
-  Programmpaket gilt die dort dokumentierte OCCT-Version; der Linux-Build ist
-  mit OCCT 7.9.3 verifiziert.
+  Programmpaket gilt die dort dokumentierte OCCT-Version; das Linux-CI-Paket
+  baut mit OCCT 7.8.1, das Windows-Paket mit 7.9.3.
+- **Web-Image (Docker):** Das Image enthält die unveränderten OCCT-Bibliotheken
+  der Debian-Fassung 7.8.1 (`libTK*.so`) samt Lizenztexten unter
+  `/usr/share/doc/occt-runtime/`. Der zugehörige Quellcode steht unter
+  <https://sources.debian.org/src/opencascade/7.8.1+dfsg1-3/> und in
+  <https://snapshot.debian.org/>; die Bibliotheken liegen als eigene Dateien im
+  Image und sind austauschbar (Basis-Image neu bauen).
 
 Die vollständigen Texte werden im Programmpaket mitgeliefert:
 

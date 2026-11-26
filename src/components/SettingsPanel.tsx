@@ -5,6 +5,7 @@ import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog'
 import { PrintTechnologySettings } from './PrintTechnologySettings';
 import { SlicerReportSettings } from './SlicerReportSettings';
 import { isReadOnly } from '../lib/readOnly';
+import { useCanManageFiles } from '../lib/webSession';
 import { displayName } from '../lib/displayName';
 import { ImportRenameSetting } from './ImportRenameSetting';
 import { SourceFoldersSettings } from './SourceFoldersSettings';
@@ -70,6 +71,10 @@ export interface SettingsPanelProps {
   singleKeyShortcuts?: boolean;
   onSingleKeyShortcutsChange?: (enabled: boolean) => void;
   onOpenTips?: () => void;
+  /** Web: checks the source folders for new files (the desktop reaches this from the import menu). */
+  onCheckSourceFolders?: () => void;
+  /** Web: reloads the catalog after source folders were copied into it. */
+  onSourceFoldersImported?: () => void | Promise<unknown>;
   onOpenWhatsNew?: () => void;
   /** A section the app wants shown (for example the source folders); a new request moves the panel again. */
   request?: SettingsRequest | null;
@@ -120,7 +125,7 @@ export function SettingsPanel({
   overlay: forceOverlay, onClose, onOpenPrinters, onThingiverseEnabledChange,
   view = 'grid', onViewChange, sort = 'name', onSortChange, sortDirection = 'asc', onSortDirectionChange, collapseBundles = true, onCollapseBundlesChange,
   detailPanel = 'auto', onDetailPanelChange,
-  singleKeyShortcuts = true, onSingleKeyShortcutsChange, onOpenTips, onOpenWhatsNew,
+  singleKeyShortcuts = true, onSingleKeyShortcutsChange, onOpenTips, onOpenWhatsNew, onCheckSourceFolders, onSourceFoldersImported,
   request, initialTab, onTabChange,
   themeSetting, onThemeChange,
   uiDensity, onUiDensityChange,
@@ -142,6 +147,7 @@ export function SettingsPanel({
   })[opt];
   const { language, setLanguage } = useLanguage();
   const web = import.meta.env.VITE_TARGET === 'web';
+  const canManageFiles = useCanManageFiles();
   const [query, setQuery] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -449,6 +455,8 @@ export function SettingsPanel({
 
           {visitedTabs.has('catalog') && (
             <SettingsTabContext.Provider value={{ tab: 'catalog', label: tabLabels.catalog }}><div hidden={activeSettingsTab !== 'catalog'}>
+              {web && <SettingsSection id="sources" help={t('settingsHelpSources')} title={t('settingsSecSources')}><SourceFoldersSettings onCheck={onCheckSourceFolders} onImported={onSourceFoldersImported} /></SettingsSection>}
+              {web && canManageFiles && <SettingsSection id="sync" help={t('settingsHelpSync')} title={t('settingsSecSync')}><DiskSyncSettings /></SettingsSection>}
               {!web && (
                 <>
                   <SettingsSection id="storage" help={t('settingsHelpStorage')} title={t('settingsSecStorage')}>
@@ -562,7 +570,26 @@ export function SettingsPanel({
           )}
 
           {visitedTabs.has('maintenance') && <SettingsTabContext.Provider value={{ tab: 'maintenance', label: tabLabels.maintenance }}><div hidden={activeSettingsTab !== 'maintenance'}>{web ? (
-            <SettingsSection id="webBackup" help={t('settingsHelpWebBackup')} title={t('settingsSecWebBackup')}><WebCatalogBackup /></SettingsSection>
+            <>
+              {canManageFiles && <SettingsSection id="check" help={t('settingsHelpCheck')} title={t('settingsSecCheck')}>
+                <p className="mb-1.5 text-small text-[var(--ink-2)]">{t('cleanupWebSettingsHint')}</p>
+                <button
+                  onClick={onScanCatalogIssues}
+                  disabled={cleanupScanning} {...lockProps}
+                  className={`min-h-7 py-1 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small ${
+                    cleanupScanning ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]'
+                  }`}
+                >
+                  {cleanupScanning ? t('catalogCleanupScanning') : t('catalogCleanupScanButton')}
+                </button>
+                {cleanupError && (
+                  <div className="mt-1.5 font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
+                    {t('catalogCleanupError')} <ErrorText error={cleanupError} />
+                  </div>
+                )}
+              </SettingsSection>}
+              <SettingsSection id="webBackup" help={t('settingsHelpWebBackup')} title={t('settingsSecWebBackup')}><WebCatalogBackup /></SettingsSection>
+            </>
           ) : (
             <>
               <SettingsSection id="check" help={t('settingsHelpCheck')} title={t('settingsSecCheck')}>

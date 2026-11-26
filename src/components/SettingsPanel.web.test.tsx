@@ -58,6 +58,8 @@ it('offers the backup as a plain download link, even for a read-only session, an
   }
   expect(screen.queryByRole('button', { name: de.importCatalogButton })).toBeNull();
   expect(screen.queryByRole('button', { name: de.exportCatalogButton })).toBeNull();
+  // A login that may only look sees the restore in the same place, switched off with its reason.
+  expect(screen.getByRole('button', { name: de.bkrOpen })).toHaveAttribute('aria-disabled', 'true');
   link.addEventListener('click', event => event.preventDefault());
   fireEvent.click(link);
   expect(props.onExportCatalog).not.toHaveBeenCalled();
@@ -151,7 +153,7 @@ it('has four tabs without Slicer & Dienste and only the sections the browser can
   expect(headings()).toEqual([de.settingsSecAppearance, de.settingsSecLanguage, de.settingsSecControls, de.settingsSecPrintMethod, de.settingsSecPrinters]);
   expect(screen.queryByRole('switch', { name: de.singleKeyShortcutsTitle })).toBeNull();
   fireEvent.click(screen.getByRole('tab', { name: 'Katalog' }));
-  expect(headings()).toEqual([de.settingsSecAutoTags, de.settingsSecPrintData]);
+  expect(headings()).toEqual([de.settingsSecSources, de.settingsSecAutoTags, de.settingsSecPrintData]);
   fireEvent.click(screen.getByRole('tab', { name: 'Info' }));
   expect(headings()).toEqual([de.settingsSecVersionWeb, de.settingsSecAbout]);
 });
@@ -181,4 +183,11 @@ it('keeps the complete web-maintenance disclosure sequence in the modal Tab cycl
   expect(close).toHaveFocus();
   fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
   expect(last).toHaveFocus();
+});
+
+it('shows the source folder settings in the web build', async () => {
+  renderCatalogTab();
+  fireEvent.click(screen.getByRole('tab', { name: 'Katalog' }));
+  expect(await screen.findByRole('heading', { name: de.settingsSecSources })).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: de.sfpOpen })).toBeInTheDocument();
 });

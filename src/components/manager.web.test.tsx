@@ -68,7 +68,7 @@ function mockManager(extra?: (command: string, args: any) => Response | undefine
     if (!url.includes('/invoke/')) return Response.json({authenticated: true, writable, csrfToken: 't'});
     const command = url.split('/').pop()!; const args = JSON.parse(String(options?.body)); calls.push({command, args});
     const override = extra?.(command, args); if (override) return override;
-    const result: Record<string, unknown> = {list_printers: [printer, {...printer, id: 'p2', name: 'Other', units: []}], list_filament_spools: [spool, {...spool, id: 'loaded', material: 'PETG', unitId: 'u1', slotIndex: 0, homeLocation: 'Shelf'}], list_printer_history: [history], load_spool: {displacedSpoolId: 'loaded'}, unload_spool: 'Shelf', add_printer: printer};
+    const result: Record<string, unknown> = {get_printer_link_enabled: false, list_printer_connections: [], list_open_printer_jobs: [], list_printers: [printer, {...printer, id: 'p2', name: 'Other', units: []}], list_filament_spools: [spool, {...spool, id: 'loaded', material: 'PETG', unitId: 'u1', slotIndex: 0, homeLocation: 'Shelf'}], list_printer_history: [history], load_spool: {displacedSpoolId: 'loaded'}, unload_spool: 'Shelf', add_printer: printer};
     return Response.json(result[command] ?? null);
   }));
 }
@@ -100,7 +100,7 @@ it.each([false, true])('all nine printer/unit mutations dispatch exactly their c
     if (enabled) expect(calls[calls.length - 1]?.command).toBe('list_printers');
   }
 });
-it.each([false,true])('material controls, slot actions and restock respect writable=%s, networking stays hidden', async enabled => {
+it.each([false,true])('material controls, slot actions and restock respect writable=%s', async enabled => {
   writable = enabled; await login('password'); mockManager(); managers('material');
   const slot = await screen.findByTestId('slot-u1-0');
   await screen.findByTestId('spool-card-1');
@@ -127,13 +127,12 @@ it.each([false,true])('material controls, slot actions and restock respect writa
   fireEvent.click(screen.getByRole('button', {name: de.delete}));
   await waitFor(() => expect(writes().map(c=>c.command)).toEqual(['delete_filament_spool']));
 });
-it.each([false,true])('printer view keeps saved history and hides printer networking with writable=%s', async enabled => {
+it.each([false,true])('printer view shows saved history and the printer connection with writable=%s', async enabled => {
   writable = enabled; await login('password'); mockManager(); managers('printers');
   await screen.findByText('saved.gcode');
-  expect(screen.queryByRole('switch')).toBeNull();
-  expect(screen.queryByRole('button',{name:de.pmConfirmJobs})).toBeNull();
-  expect(screen.queryByRole('button',{name:de.printerSyncNow})).toBeNull();
-  expect(screen.queryByRole('heading',{name:de.pmConnection})).toBeNull();
+  expect(screen.getByRole('switch', {name: de.pmLink})).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:de.pmConfirmJobs})).toBeInTheDocument();
+  expect(screen.getByRole('heading',{name:de.pmConnection})).toBeInTheDocument();
   expect(screen.getByRole('button',{name:de.pmDeletePrinter})).toHaveProperty('disabled',!enabled);
   expect(screen.getByRole('button',{name:de.pmAddPrinter})).toHaveProperty('disabled',!enabled);
   if (enabled) {
@@ -161,11 +160,9 @@ it('shows a slot shrink warning and unit deletion consequences before mutation',
   fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
   await waitFor(() => expect(writes().map(c=>c.command)).toEqual(['delete_unit']));
 });
-it('shows no connection status in the web printer list, because printers cannot be linked there', async () => {
+it('shows the connection status of each printer in the web printer list', async () => {
   mockManager(); managers('printers'); await screen.findByText('saved.gcode');
-  expect(screen.queryByText(de.pmInactive)).toBeNull();
-  expect(screen.queryByText(de.pmNoConnection)).toBeNull();
-  expect(screen.getAllByText(de.spoolKindFilament).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(de.pmNoConnection).length).toBeGreaterThan(0);
 });
 it('keeps successful copies after a partial create and retries only missing copies', async () => {
   let adds=0;
@@ -205,7 +202,7 @@ it('shows a failed reorder and a failed reload without optimistic ordering', asy
   cleanup(); clearMetadataError(); calls=[]; failRead=true;
   managers('printers'); await screen.findAllByText('offline');
 });
-it.each(['set_printer_link_enabled','test_printer_connection','remove_printer_connection','clear_printer_api_key','include_older_printer_history','sync_printers_now','preview_printer_job','get_printer_job_thumbnail','confirm_printer_jobs','ignore_printer_job','set_printer_job_failure','pick_and_read_image'])('never sends forbidden %s even in write mode', async command => {
+it.each(['pick_and_read_image'])('never sends forbidden %s even in write mode', async command => {
   await expect(invoke(command,{})).rejects.toBeDefined(); expect(calls).toEqual([]);
 });
 it('waits for image validation before saving and never silently drops a selected image', async () => {

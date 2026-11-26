@@ -34,13 +34,16 @@ it.each([
   document.documentElement.lang = 'de';
 });
 
-it('keeps manager scope explicit and printer networking unavailable', () => {
-  expect(WEB_WRITE_COMMANDS).toHaveLength(66);
+it('keeps manager and printer command scope explicit', () => {
+  expect(new Set(WEB_WRITE_COMMANDS).size).toBe(WEB_WRITE_COMMANDS.length);
+  expect(WEB_WRITE_COMMANDS).toContain('start_source_import');
   expect(WEB_WRITE_COMMANDS).toContain('set_spool_print_temperatures');
   expect(WEB_WRITE_COMMANDS).toContain('rename_tag');
   expect(WEB_WRITE_COMMANDS).toContain('merge_tags');
   expect(WEB_READ_COMMANDS).toContain('get_filament_spool_image');
-  for (const command of ['set_printer_link_enabled', 'test_printer_connection', 'remove_printer_connection', 'clear_printer_api_key', 'include_older_printer_history', 'set_printer_job_failure', 'sync_printers_now', 'pick_and_read_image']) {
+  expect(WEB_WRITE_COMMANDS).toContain('test_printer_connection');
+  expect(WEB_READ_COMMANDS).toContain('get_printer_job_thumbnail');
+  for (const command of ['pick_and_read_image']) {
     expect([...WEB_READ_COMMANDS, ...WEB_WRITE_COMMANDS]).not.toContain(command);
   }
 });
@@ -70,4 +73,14 @@ it('matches the separate file operation capability list to Rust', async () => {
   expect(constant).toBeDefined();
   expect([...FILE_OPS_COMMANDS].sort()).toEqual([...constant.matchAll(/"([a-z_]+)"/g)].map(match => match[1]).sort());
   expect(FILE_OPS_COMMANDS.every(command => (WEB_WRITE_COMMANDS as readonly string[]).includes(command))).toBe(true);
+});
+
+it('classifies every source folder command for the web build', async () => {
+  const classes = (await import('../../docs/web/command-classes.json')).default.commands as Record<string, string>;
+  const reads = ['list_source_dirs', 'list_source_folders', 'scan_source_folders', 'get_source_check_on_start'];
+  const writes = ['add_source_folder', 'remove_source_folder', 'reject_source_files', 'reset_rejected_source_files', 'set_source_check_on_start'];
+  for (const command of reads) { expect(WEB_READ_COMMANDS).toContain(command); expect(['web', 'web-only']).toContain(classes[command]); }
+  for (const command of writes) { expect(WEB_WRITE_COMMANDS).toContain(command); expect(classes[command]).toBe('web'); }
+  // The copy import is not built yet and must stay unreachable from the browser until it is.
+  expect([...WEB_READ_COMMANDS, ...WEB_WRITE_COMMANDS]).not.toContain('import_source_files');
 });

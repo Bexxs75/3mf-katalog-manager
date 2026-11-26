@@ -119,6 +119,7 @@ impl Journal {
 struct Inner {
     journal: Journal,
     active: usize,
+    source_import: bool,
     reserved: u64,
     active_bytes: u64,
     /// Models an archive is being unpacked into: they are not uploads yet, but
@@ -181,8 +182,8 @@ pub fn sanitize_name(encoded: &str) -> Result<String, StoreError> {
     if is_archive_name(&name) || is_model_extension(&ext) || is_sliced_extension(&ext) {
         return Ok(name);
     }
-    // rar, tar and friends are recognised so the user learns the format is the
-    // problem rather than a generic "wrong type".
+    // rar is recognised so the user learns the format is the problem rather than a
+    // generic "wrong type".
     if katalog_core::archive::detect_format(std::path::Path::new(&name)).is_some() {
         return Err(StoreError::new(415, "archive_format_unsupported"));
     }
@@ -225,15 +226,39 @@ pub(crate) fn is_model_extension(ext: &str) -> bool {
 pub(crate) fn is_sliced_extension(ext: &str) -> bool {
     matches!(ext, "gcode" | "bgcode") || katalog_core::import::files::is_resin_extension(ext)
 }
-/// Archives the web upload unpacks itself; every other archive format is refused.
+/// Archives the web upload unpacks itself (zip, 7z and the tar family); RAR needs an external
+/// unpacker and stays a desktop feature.
 pub(crate) fn is_archive_name(name: &str) -> bool {
-    matches!(extension(name).as_str(), "zip" | "7z")
+    katalog_core::archive::detect_format(std::path::Path::new(name))
+        .is_some_and(|format| format != katalog_core::archive::ArchiveFormat::Rar)
+}
+/// Content check for an upload by its full name: tar archives have no usable last extension
+/// (`x.tar.gz`), so their container signature is checked here, everything else by extension.
+pub(crate) fn upload_signature_ok(name: &str, head: &[u8]) -> bool {
+    use katalog_core::archive::{detect_format, ArchiveFormat as F};
+    match detect_format(std::path::Path::new(name)) {
+        Some(F::Tar) => head.get(257..262) == Some(b"ustar"),
+        Some(F::TarGz) => head.starts_with(&[0x1f, 0x8b]),
+        Some(F::TarBz2) => head.starts_with(b"BZh"),
+        Some(F::TarXz) => head.starts_with(&[0xfd, b'7', b'z', b'X', b'Z', 0]),
+        Some(F::TarZst) => head.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]),
+        _ => signature_ok(&extension(name), head),
+    }
 }
 pub(crate) fn extension(name: &str) -> String {
     name.rsplit('.').next().unwrap_or("").to_ascii_lowercase()
 }
 /// Same bound as the filesystem-operation journal.
 const MAX_JOURNAL_BYTES: u64 = 16 * 1024 * 1024;
+
+pub struct SourceImportGuard(Arc<UploadStore>);
+impl Drop for SourceImportGuard {
+    fn drop(&mut self) {
+        if let Ok(mut inner) = self.0.inner.lock() {
+            inner.source_import = false;
+        }
+    }
+}
 
 impl UploadStore {
     pub fn load(
@@ -547,7 +572,7 @@ impl UploadStore {
             return Err(StoreError::new(413, "too_large"));
         }
         let mut inner = self.lock()?;
-        if inner.active >= self.max_active {
+        if inner.source_import || inner.active >= self.max_active {
             return Err(StoreError::new(503, "upload_busy"));
         }
         let pending: Vec<_> = inner
@@ -900,6 +925,15 @@ impl UploadStore {
         }
         Ok(())
     }
+    /// Reserve copying against streaming uploads while the caller holds the import gate.
+    pub fn begin_source_import(self: &Arc<Self>) -> Result<SourceImportGuard, StoreError> {
+        let mut inner = self.lock()?;
+        if inner.active != 0 || inner.source_import {
+            return Err(StoreError::new(503, "upload_busy"));
+        }
+        inner.source_import = true;
+        Ok(SourceImportGuard(self.clone()))
+    }
     pub fn ensure_importable(&self) -> Result<(), StoreError> {
         if self.restart_required.load(Ordering::Acquire) {
             return Err(StoreError::new(503, "restart_required"));
@@ -1236,7 +1270,7 @@ impl PendingUpload {
         if self.written != self.length {
             return Err(StoreError::new(400, "length_mismatch"));
         }
-        if !signature_ok(&extension(&self.name), &self.head) {
+        if !upload_signature_ok(&self.name, &self.head) {
             return Err(StoreError::new(400, "invalid_signature"));
         }
         #[cfg(test)]

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { Disclosure } from './Disclosure';
+import { WebBackupRestore } from './WebBackupRestore';
 
 /** Matches the server's minimum gap between two exports of one session. */
 const COOLDOWN_MS = 30_000;
@@ -23,7 +24,7 @@ export function WebCatalogBackup() {
     const timer = setTimeout(() => setNow(Date.now()), pausedUntil - Date.now() + 50);
     return () => clearTimeout(timer);
   }, [paused, pausedUntil]);
-  const classes = 'block text-center leading-7 h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small';
+  const classes = 'block text-center leading-5 min-h-7 py-1 px-2 w-full [overflow-wrap:anywhere] rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small';
   return (
     <>
       {/* The same element stays mounted while paused, so keyboard focus is not lost. */}
@@ -42,8 +43,9 @@ export function WebCatalogBackup() {
       >
         {t('exportCatalogWebButton')}
       </a>
-      {paused && <p id="web-backup-pause" role="status" className="mt-1.5 text-small text-[var(--ink-2)]">{t('catalogBackupWebPause')}</p>}
+      {paused && <p id="web-backup-pause" role="status" className="mt-1.5 text-small text-[var(--ink-2)] whitespace-normal [overflow-wrap:anywhere]">{t('catalogBackupWebPause')}</p>}
       <p className="mt-1.5 text-small text-[var(--ink-2)]">{t('catalogBackupWebHint')}</p>
+      <div className="mt-3"><WebBackupRestore /></div>
       <Disclosure summary={t('catalogBackupWebRestoreTitle')} className="mt-1.5">{t('catalogBackupWebRestoreText')}</Disclosure>
       <Disclosure summary={t('catalogBackupWebFailureTitle')} className="mt-1.5">{t('catalogBackupWebFailureHint')}</Disclosure>
     </>

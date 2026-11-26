@@ -3,9 +3,10 @@ import { authenticationFailed, canUpload, getSnapshot, readResponse, subscribe }
 
 export type UploadTextKey = { [K in keyof Translations]: Translations[K] extends string ? K : never }[keyof Translations];
 
-export const MODEL_UPLOAD_ACCEPT = '.3mf,.stl,.obj,.stp,.step,.gcode,.bgcode,.ctb,.cbddlp,.goo,.pwmx,.pwms,.sl1,.zip,.7z';
-// Formats the server recognises but does not unpack in the browser (desktop app only).
-const UNPACKED_ELSEWHERE = /\.(rar|tar|tgz|tbz2|txz|tzst)$|\.tar\.(gz|bz2|xz|zst)$/i;
+export const MODEL_UPLOAD_ACCEPT = '.3mf,.stl,.obj,.stp,.step,.gcode,.bgcode,.ctb,.cbddlp,.goo,.pwmx,.pwms,.sl1,.zip,.7z,.tar,.tgz,.tbz2,.txz,.tzst,.gz,.bz2,.xz,.zst';
+// RAR is recognised but not unpacked by the web server (desktop app only).
+const UNPACKED_ELSEWHERE = /\.rar$/i;
+const UPLOAD_TYPES = /\.(3mf|stl|obj|stp|step|gcode|bgcode|zip|7z|tar|tgz|tbz2|txz|tzst)$|\.tar\.(gz|bz2|xz|zst)$/i;
 // Why an upload or archive was set aside, as reported by the server in `kind`.
 const REASON_KEYS: Record<string, UploadTextKey> = {
   archive_encrypted: 'webUploadArchiveEncrypted', archive_too_large: 'webUploadArchiveTooLarge',
@@ -18,10 +19,10 @@ const REASON_KEYS: Record<string, UploadTextKey> = {
 export const reasonKey = (kind: string | null | undefined): UploadTextKey | null => (kind && REASON_KEYS[kind]) || null;
 export interface WebUpload { uploadId: string; name: string; size: number; time: number; state: 'uploaded' | 'duplicate' | 'invalid' | 'imported'; result: unknown; archive?: boolean }
 export interface WebImportFile { uploadId: string; name: string; state: string; fileId: string | null; existingFileId: string | null; existingFileName?: string | null; kind: string | null; models?: number; skipped?: number }
-export interface WebImportJob { jobId: string; state: string; current: string | null; total: number; done: number; files: WebImportFile[]; kind: string | null }
+export interface WebImportJob { jobId: string; state: string; current: string | null; total: number; done: number; files: WebImportFile[]; kind: string | null; source?: boolean }
 export interface UploadRow { id: number; name: string; percent: number; state: 'queued' | 'uploading' | 'retrying' | 'uploaded' | 'cancelled' | 'error'; error?: UploadTextKey }
 interface View { queue: UploadRow[]; uploads: WebUpload[]; jobs: WebImportJob[]; connection: 'connecting' | 'connected' | 'disconnected'; error: UploadTextKey | null; busy: boolean; result: WebImportJob | null }
-interface Failure { status?: number; kind?: string; code?: string; retryAfter?: string | null }
+interface Failure { status?: number; kind?: string; code?: string; message?: string; retryAfter?: string | null }
 export const importFinished = (job: WebImportJob) => ['completed', 'cancelled', 'failed'].includes(job.state);
 export function uploadErrorKey(error: unknown): UploadTextKey {
   const e = (error ?? {}) as Failure;
@@ -29,6 +30,7 @@ export function uploadErrorKey(error: unknown): UploadTextKey {
   if (e.kind === 'folders') return 'webUploadFolders';
   if (e.kind === 'cancelled') return 'webUploadCancelled';
   if (e.status === 503 && !e.retryAfter) return 'webUploadRestart';
+  if (e.status === 409 && (e.code === 'catalogHashCheckPending' || e.message === 'catalogHashCheckPending')) return 'errCatalogHashCheckPending';
   return ({ 400: 'webUploadInvalid', 401: 'webUploadSessionEnded', 403: 'webUploadForbidden', 404: 'webUploadMissing', 408: 'webUploadOffline', 409: 'webUploadConflict', 411: 'webUploadLength', 413: 'webUploadTooLarge', 415: 'webUploadType', 429: 'webUploadBusy', 503: 'webUploadBusy', 507: 'webUploadNoSpace' } as Record<number, UploadTextKey>)[e.status ?? 0] ?? (e.status ? 'webUploadFailed' : 'webUploadOffline');
 }
 function retryDelay(e: Failure): number | null {
@@ -164,7 +166,8 @@ export class WebImportController {
     if (importFinished(job)) {
       this.completed.add(job.jobId);
       if (notify) {
-        this.patch({ result: job });
+        // A folder copy shows its result in its own dialog; only upload imports belong to this surface.
+        if (!job.source) this.patch({ result: job });
         void Promise.resolve().then(() => this.onImported?.()).catch(e => this.report(e));
         void this.refreshUploads();
       }
@@ -196,7 +199,7 @@ export class WebImportController {
       const id = ++this.serial;
       const error: UploadTextKey | undefined = file.webkitRelativePath ? 'webUploadFolders'
         : UNPACKED_ELSEWHERE.test(file.name) ? 'webUploadArchives'
-        : !/\.(3mf|stl|obj|stp|step|gcode|bgcode|zip|7z)$/i.test(file.name) ? 'webUploadType' : undefined;
+        : !UPLOAD_TYPES.test(file.name) ? 'webUploadType' : undefined;
       this.patch({ queue: [...this.view.queue, { id, name: file.name, percent: 0, state: error ? 'error' : 'queued', error }] });
       if (!error) this.pending.set(id, { file, abort: new AbortController() });
     }

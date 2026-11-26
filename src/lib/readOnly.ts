@@ -3,7 +3,21 @@ export const isReadOnly = () => import.meta.env.VITE_TARGET === 'web';
 
 /** Keep in sync with katalog-server's is_allowed (verified against Rust source). */
 export const WEB_READ_COMMANDS = [
-  'folder_removal_summary', 'empty_trash_summary',
+  'list_source_dirs',
+  'list_source_folders',
+  'scan_source_folders',
+  'get_source_check_on_start',
+  'scan_catalog_issues',
+  'get_sync_on_start',
+  'get_sync_auto_add',
+  'run_start_sync',
+  'get_printer_link_enabled',
+  'list_printer_connections',
+  'list_open_printer_jobs',
+  'preview_printer_job',
+  'get_printer_job_thumbnail',
+
+  'folder_removal_summary', 'folder_trash_summary', 'empty_trash_summary',
   'get_import_state', 'get_import_result',
   'list_file_summaries', 'list_all_file_tags', 'list_files_by_ids', 'list_tag_counts',
   'list_print_log_entries', 'list_folders', 'list_collections', 'list_collection_files', 'list_bundles',
@@ -28,6 +42,23 @@ export const WEB_READ_COMMANDS = [
 
 /** Web write commands: the server remains the authority for each request. */
 export const WEB_WRITE_COMMANDS = [
+  'add_source_folder',
+  'remove_source_folder',
+  'reject_source_files',
+  'reset_rejected_source_files',
+  'set_source_check_on_start',
+  'set_sync_on_start',
+  'set_sync_auto_add',
+  'set_printer_link_enabled',
+  'test_printer_connection',
+  'clear_printer_api_key',
+  'remove_printer_connection',
+  'include_older_printer_history',
+  'sync_printers_now',
+  'ignore_printer_job',
+  'set_printer_job_failure',
+  'confirm_printer_jobs',
+
   'rename_file',
   'move_files_to_folder',
   'delete_files',
@@ -39,10 +70,17 @@ export const WEB_WRITE_COMMANDS = [
   'rename_folder',
   'move_folder',
   'remove_folder_from_catalog',
+  'trash_folder_start',
+  'trash_folder_block',
   'remove_companion',
   'restore_companion',
+  'disk_sync_preview',
+  'disk_sync_apply_start',
+  'disk_sync_apply_block',
+  'preview_date_rename',
+  'apply_date_rename',
   'remove_files_from_catalog',
-  'start_upload_import', 'discard_upload', 'cancel_import',
+  'start_source_import', 'start_upload_import', 'discard_upload', 'cancel_import',
   'set_favorite', 'set_print_status', 'add_tag', 'remove_tag', 'rename_tag', 'merge_tags', 'set_license',
   'set_source_url', 'add_print_log_entry', 'delete_print_log_entry', 'mark_file_viewed',
   'add_to_queue', 'remove_from_queue', 'reorder_queue', 'create_collection',
@@ -73,3 +111,6 @@ export const WEB_WRITE_COMMANDS = [
   'block_auto_tag',
   'unblock_auto_tag',
 ] as const;
+
+/** Dedicated write routes; these names are audit labels, not invoke commands. */
+export const WEB_ROUTE_WRITES = ['add_companion', 'backup_upload', 'backup_discard', 'backup_restore'] as const;

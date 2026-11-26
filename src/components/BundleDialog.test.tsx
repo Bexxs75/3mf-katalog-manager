@@ -24,6 +24,10 @@ const harbour: Bundle = {
     { fileId: '4', position: 2, label: null, inTrash: false },
   ],
 };
+const solo: Bundle = {
+  id: 'b3', name: 'Solo', kind: 'parts', createdAt: '2026-11-01T00:00:00Z',
+  members: [{ fileId: '4', position: 0, label: null, inTrash: false }],
+};
 const other: Bundle = {
   id: 'b2', name: 'Paar', kind: 'parts', createdAt: '2026-11-01T00:00:00Z',
   members: [{ fileId: '3', position: 0, label: null, inTrash: false }, { fileId: '9', position: 1, label: null, inTrash: false }],
@@ -101,15 +105,18 @@ describe('BundleDialog, create', () => {
     expect(rowNames()).toEqual(['Halter klein.3mf', 'Halter gross.3mf', 'Deckel.stl']);
   });
 
-  it('takes a model out of the selection but never goes below two', () => {
+  it('takes a model out of the selection but never goes below one', () => {
     open({ mode: 'create', fileIds: ['1', '2', '4'] });
     fireEvent.click(screen.getAllByRole('button', { name: de.bundleDlgTakeOut })[1]);
     expect(rowNames()).toEqual(['Halter gross.3mf', 'Deckel.stl']);
+    expect(screen.getByRole('button', { name: 'Bündel anlegen (2 Modelle)' })).toBeEnabled();
+    fireEvent.click(screen.getAllByRole('button', { name: de.bundleDlgTakeOut })[1]);
+    expect(rowNames()).toEqual(['Halter gross.3mf']);
     for (const button of screen.getAllByRole('button', { name: de.bundleDlgTakeOut })) {
       expect(button).toBeDisabled();
-      expect(button).toHaveAttribute('title', de.bundleDlgNeedTwo);
+      expect(button).toHaveAttribute('title', de.bundleDlgNeedOne);
     }
-    expect(screen.getByRole('button', { name: 'Bündel anlegen (2 Modelle)' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Bündel anlegen (1 Modell)' })).toBeEnabled();
   });
 
   it('refuses an empty name with a message that is announced', () => {
@@ -127,12 +134,14 @@ describe('BundleDialog, create', () => {
   });
 
   it('needs a confirmation before a file switches from another bundle, and says what is left of the old one', () => {
-    open({ mode: 'create', fileIds: ['1', '3'] }, [harbour, other]);
+    open({ mode: 'create', fileIds: ['1', '3', '4'] }, [harbour, other, solo]);
     const note = document.querySelector('[data-switch-note]') as HTMLElement;
     expect(note).toHaveTextContent('„Halter gross.3mf“ wechselt von Bündel „Hafen“ zu „Halter gross“.');
-    expect(note).toHaveTextContent('Das Bündel „Hafen“ behält 2 Modelle.');
+    expect(note).toHaveTextContent('Das Bündel „Hafen“ behält 1 Modell.');
     expect(note).toHaveTextContent('„Halter klein (Kopie).3mf“ wechselt von Bündel „Paar“');
-    expect(note).toHaveTextContent('Das Bündel „Paar“ hätte danach weniger als 2 Modelle und wird aufgelöst.');
+    expect(note).toHaveTextContent('Das Bündel „Paar“ behält 1 Modell.');
+    expect(note).toHaveTextContent('„Deckel.stl“ wechselt von Bündel „Solo“');
+    expect(note).toHaveTextContent('Das Bündel „Solo“ hätte danach kein Modell mehr und wird aufgelöst.');
     const submit = screen.getByRole('button', { name: /Bündel anlegen/ });
     expect(submit).toBeDisabled();
     fireEvent.click(within(note).getByRole('checkbox', { name: de.bundleDlgSwitchConfirm }));
@@ -192,7 +201,7 @@ describe('BundleDialog, edit', () => {
     });
   });
 
-  it('marks a removal until save, lets it be undone, and offers to dissolve when too few stay', () => {
+  it('marks a removal until save, lets it be undone, and offers to dissolve when none stays', () => {
     open({ mode: 'edit', bundleId: 'b1' }, [harbour]);
     fireEvent.click(screen.getAllByRole('button', { name: de.bundleDlgRemove })[1]);
     expect(screen.getByText(de.bundleDlgWillRemove)).toBeInTheDocument();
@@ -200,6 +209,8 @@ describe('BundleDialog, edit', () => {
     fireEvent.click(screen.getByRole('button', { name: de.bundleDlgKeep }));
     expect(screen.queryByText(de.bundleDlgWillRemove)).toBeNull();
     fireEvent.click(screen.getAllByRole('button', { name: de.bundleDlgRemove })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: de.bundleDlgRemove })[0]);
+    expect(screen.queryByText(de.bundleDlgTooFew)).toBeNull();
     fireEvent.click(screen.getAllByRole('button', { name: de.bundleDlgRemove })[0]);
     expect(screen.getByText(de.bundleDlgTooFew)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: de.bundleDissolve })).toBeEnabled();

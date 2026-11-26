@@ -509,7 +509,7 @@ mod tests {
             vec![("a.pdf", true), ("b.png", false), ("c.txt", false)]
         );
         assert_eq!(list[2].deleted_at.as_deref(), Some("x"));
-        assert_eq!(list[2].restorable, Some(true), "no trash file: only the row comes back");
+        assert_eq!(list[2].restorable, Some(cfg!(target_os = "linux")), "no trash file: only the row comes back");
         assert!(list[0].deleted_at.is_none() && list[0].restorable.is_none());
         f.conn
             .execute("UPDATE companion_files SET trash_path='/desktop/trash/companion-3-x.txt' WHERE id=?1", [trashed])

@@ -23,9 +23,14 @@ describe('stlEntryState', () => {
     expect(stlEntryState({ ...base, fileType: '3mf', hasStepPreview: false })).toBe('enabled');
   });
 
-  it('is hidden in the web version and in a container, where no save dialog can open', () => {
-    expect(stlEntryState({ ...base, fileType: '3mf', readOnly: true })).toBe('hidden');
+  it('is hidden in a container, where no save dialog can open', () => {
     expect(stlEntryState({ ...base, fileType: '3mf', container: true })).toBe('hidden');
+  });
+
+  it('offers a download of 3MF and OBJ in the web version, but not STEP, STL or other files', () => {
+    expect(stlEntryState({ ...base, fileType: '3mf', readOnly: true })).toBe('enabled');
+    expect(stlEntryState({ ...base, fileType: 'obj', readOnly: true })).toBe('enabled');
+    for (const fileType of ['stp', 'step', 'stl', 'gcode', '']) expect(stlEntryState({ ...base, fileType, readOnly: true })).toBe('hidden');
   });
 });
 

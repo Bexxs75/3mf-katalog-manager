@@ -77,6 +77,15 @@ fn trash_entry_name(label: &str, op: &str, disk: &str) -> Result<String> {
     Ok(name)
 }
 
+/// Desktop trash names contain a row id followed by one nonempty filename.
+pub fn desktop_trash_name_matches(name: &str, id: i64, companion: bool) -> bool {
+    let prefix = if companion { format!("companion-{id}-") } else { format!("{id}-") };
+    id > 0 && name.strip_prefix(&prefix).is_some_and(|tail| {
+        !tail.is_empty() && tail != "." && tail != ".."
+            && !tail.contains(['/', '\\', '\0'])
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,5 +130,25 @@ mod tests {
             assert!(!name.ends_with(['.', ' ']));
             assert_eq!(validate_name(&name).unwrap(), name);
         }
+    }
+}
+pub const TRASH: &str = ".katalog-papierkorb";
+/// Whether a directory entry of a root is the user's content. `.`/`..` and the server's own
+/// trash folder (created in every root at start) do not count: a volume that is not mounted
+/// leaves an empty mount point that only holds the trash folder.
+pub fn is_root_content(name: &str) -> bool {
+    name != "." && name != ".." && name != TRASH
+}
+
+#[cfg(test)]
+mod root_content_tests {
+    use super::*;
+    #[test]
+    fn root_content_ignores_dots_and_trash() {
+        assert!(!is_root_content("."));
+        assert!(!is_root_content(".."));
+        assert!(!is_root_content(TRASH));
+        assert!(is_root_content("model.3mf"));
+        assert!(is_root_content(".hidden"));
     }
 }

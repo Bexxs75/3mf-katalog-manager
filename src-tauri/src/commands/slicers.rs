@@ -274,7 +274,8 @@ mod tests {
     #[test]
     fn registering_two_different_files_creates_two_entries() {
         let dir = unique_test_dir("register_slicer_two_files");
-        let other = dir.join("other-slicer");
+        // Windows accepts a slicer only by its `.exe` ending.
+        let other = dir.join(if cfg!(windows) { "other-slicer.exe" } else { "other-slicer" });
         std::fs::copy(std::env::current_exe().unwrap(), &other).unwrap();
         let conn = db::connect_in_memory().unwrap();
         let a = register_slicer_with_conn(&conn, "A".into(), std::env::current_exe().unwrap().to_string_lossy().to_string()).unwrap();

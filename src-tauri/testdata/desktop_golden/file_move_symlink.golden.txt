@@ -1,0 +1,124 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": {
+        "moved": {
+          "fromFolderId": 1,
+          "fromPath": "<ROOT>/src/linked.3mf"
+        }
+      }
+    },
+    "step": "symlinked model (no hard link, copy)"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/linked.3mf",
+        "SymlinkMetadata <ROOT>/src/linked.3mf",
+        "CopyNew <ROOT>/src/linked.3mf -> <ROOT>/dst/linked.3mf",
+        "RemoveFile <ROOT>/src/linked.3mf"
+      ]
+    },
+    "step": "symlinked model (no hard link, copy): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 2,
+          "path": "<ROOT>/dst/linked.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/linked.3mf",
+          "outside/",
+          "outside/real.3mf",
+          "src/"
+        ]
+      }
+    },
+    "step": "symlinked model (no hard link, copy): state"
+  },
+  {
+    "result": {
+      "ok": {
+        "refused": {
+          "code": "source_missing",
+          "error": {
+            "expected": true,
+            "message": "fileMissingOnDisk",
+            "params": [
+              "<ROOT>/src/dangling.3mf"
+            ]
+          }
+        }
+      }
+    },
+    "step": "dangling symlink (source missing)"
+  },
+  {
+    "result": {
+      "ok": [
+        "Metadata <ROOT>/dst",
+        "Metadata <ROOT>/src/dangling.3mf"
+      ]
+    },
+    "step": "dangling symlink (source missing): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [],
+        "file": {
+          "folderId": 1,
+          "path": "<ROOT>/src/dangling.3mf"
+        },
+        "tree": [
+          "dst/",
+          "dst/linked.3mf",
+          "outside/",
+          "outside/real.3mf",
+          "src/",
+          "src/dangling.3mf"
+        ]
+      }
+    },
+    "step": "dangling symlink (source missing): state"
+  }
+]
+
+== tables ==
+[folders] 2 row(s)
+  id=1 | name=src | parent_id=NULL | path=<ROOT>/src
+  id=2 | name=dst | parent_id=NULL | path=<ROOT>/dst
+[files] 2 row(s)
+  id=1 | name=linked.3mf | path=<ROOT>/dst/linked.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=dangling.3mf | path=<ROOT>/src/dangling.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 0 row(s)
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+dst/
+dst/linked.3mf (10 bytes)
+outside/
+outside/real.3mf (10 bytes)
+src/
+src/dangling.3mf (symlink)

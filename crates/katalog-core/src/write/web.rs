@@ -69,6 +69,21 @@ fn count(ids: usize) -> WriteResult<()> {
     }
     Ok(())
 }
+/// Highest number of different tags, of tags on one file, of collections and of models in one
+/// collection that the web may create. They bound what a (logged-in) client can add to the
+/// catalog; the desktop is not limited by them.
+pub const MAX_TAGS: i64 = 5000;
+pub const MAX_TAGS_PER_FILE: i64 = 100;
+pub const MAX_COLLECTIONS: i64 = 500;
+pub const MAX_COLLECTION_FILES: i64 = 10000;
+/// Refuses with `WebLimitReached` when `sql` (a COUNT) already shows `max` or more.
+fn below(c: &Connection, sql: &str, args: impl rusqlite::Params, max: i64) -> WriteResult<()> {
+    let n: i64 = c.query_row(sql, args, |r| r.get(0))?;
+    if n >= max {
+        return Err(invalid_with(ErrorCode::WebLimitReached, [max]));
+    }
+    Ok(())
+}
 fn file_update(
     c: &mut Connection,
     id: i64,
@@ -120,8 +135,25 @@ pub fn add_to_queue(c: &mut Connection, id: i64) -> WriteResult<Outcome<i64>> {
 pub fn add_tag(c: &mut Connection, id: i64, tag: &str) -> WriteResult<Outcome<()>> {
     nonempty(tag)?;
     db::error::validate_text_length(tag, 100, ErrorCode::TagNameTooLong)?;
-    file_update(c, id, |c| {
-        db::add_tag_to_file(c, id, &crate::tagging::canonical_tag(tag))
+    let name = crate::tagging::canonical_tag(tag);
+    transaction(c, |c| {
+        exists(c, "files", id)?;
+        // Quotas count only what this call would newly create; a tag that is already there
+        // (or already on the file) is never refused, so adding it again stays harmless.
+        let on_file: bool = c.query_row(
+            "SELECT EXISTS(SELECT 1 FROM file_tags JOIN tags ON tags.id=tag_id WHERE file_id=?1 AND tags.name=?2)",
+            params![id, name],
+            |r| r.get(0),
+        )?;
+        if !on_file {
+            below(c, "SELECT COUNT(*) FROM file_tags WHERE file_id=?1", [id], MAX_TAGS_PER_FILE)?;
+            let known: bool = c.query_row("SELECT EXISTS(SELECT 1 FROM tags WHERE name=?1)", [&name], |r| r.get(0))?;
+            if !known {
+                below(c, "SELECT COUNT(*) FROM tags", [], MAX_TAGS)?;
+            }
+        }
+        db::add_tag_to_file(c, id, &name)?;
+        Ok(outcome((), c.changes()))
     })
 }
 pub fn remove_tag(c: &mut Connection, id: i64, tag: &str) -> WriteResult<Outcome<()>> {
@@ -309,6 +341,7 @@ pub fn create_collection(
     nonempty(name)?;
     length(name, 120)?;
     transaction(c, |c| {
+        below(c, "SELECT COUNT(*) FROM collections", [], MAX_COLLECTIONS)?;
         let id = db::create_collection(c, name, &chrono::Utc::now().to_rfc3339())?;
         Ok(outcome(
             read::CollectionDto {
@@ -346,6 +379,23 @@ pub fn add_files_to_collection(
         exists(c, "collections", cid)?;
         for &id in ids {
             exists(c, "files", id)?;
+        }
+        // Only models that are not yet in the collection count towards the limit.
+        let mut fresh = 0;
+        for (index, id) in ids.iter().enumerate() {
+            if ids[..index].contains(id) {
+                continue;
+            }
+            let member: bool = c.query_row(
+                "SELECT EXISTS(SELECT 1 FROM collection_files WHERE collection_id=?1 AND file_id=?2)",
+                params![cid, id],
+                |r| r.get(0),
+            )?;
+            fresh += i64::from(!member);
+        }
+        let members: i64 = c.query_row("SELECT COUNT(*) FROM collection_files WHERE collection_id=?1", [cid], |r| r.get(0))?;
+        if members + fresh > MAX_COLLECTION_FILES {
+            return Err(invalid_with(ErrorCode::WebLimitReached, [MAX_COLLECTION_FILES]));
         }
         let mut next = db::max_collection_position(c, cid)?.unwrap_or(-1);
         let mut changes = 0;
@@ -574,23 +624,15 @@ pub fn remove_files_from_catalog(c: &mut Connection, ids: &[i64]) -> WriteResult
     if ids.iter().any(|id| *id <= 0) {
         return Err(invalid(ErrorCode::InvalidCatalogId));
     }
-    let ids: std::collections::BTreeSet<_> = ids.iter().copied().collect();
     transaction(c, |c| {
-        for id in &ids {
-            let active: bool = c.query_row(
-                "SELECT EXISTS(SELECT 1 FROM files WHERE id=?1 AND deleted_at IS NULL)",
-                [id], |r| r.get(0),
-            )?;
-            if !active {
-                return Err(WriteError::coded_not_found(ErrorCode::ModelNotFoundOrTrashed));
-            }
-        }
-        let mut changes = 0;
-        for id in &ids {
-            changes += c.execute("DELETE FROM files WHERE id=?1", [id])?;
-        }
-        db::bundles::prune_bundles(c)?;
-        Ok(outcome(changes, changes as u64))
+        let removed = crate::catalog_removal::remove_files_in(c, ids).map_err(|e| match e {
+            // The server answers a missing model with 404, not 422.
+            db::error::DbError::Coded { code: ErrorCode::ModelNotFoundOrTrashed, .. } => WriteError::coded_not_found(ErrorCode::ModelNotFoundOrTrashed),
+            // Database failures keep the plain wording this API always used.
+            db::error::DbError::Sqlite(e) => e.into(),
+            other => other.into(),
+        })?;
+        Ok(outcome(removed, removed as u64))
     })
 }
 

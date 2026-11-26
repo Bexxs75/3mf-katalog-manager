@@ -1,0 +1,1473 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "start: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameEmpty"
+      }
+    },
+    "step": "empty name"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "empty name: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "empty name: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameForbiddenChar",
+        "params": [
+          "/"
+        ]
+      }
+    },
+    "step": "slash in the name"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "slash in the name: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "slash in the name: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameNotAllowed"
+      }
+    },
+    "step": "dot dot"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "dot dot: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "dot dot: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameEndsWithDotOrSpace"
+      }
+    },
+    "step": "trailing dot"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "trailing dot: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "trailing dot: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameEndsWithDotOrSpace"
+      }
+    },
+    "step": "trailing space"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "trailing space: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "trailing space: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameWindowsReserved"
+      }
+    },
+    "step": "reserved Windows name"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "reserved Windows name: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "reserved Windows name: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderNameForbiddenChar",
+        "params": [
+          ":"
+        ]
+      }
+    },
+    "step": "forbidden character"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "forbidden character: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "forbidden character: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "folder not found"
+      }
+    },
+    "step": "unknown folder"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "unknown folder: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "unknown folder: state"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "same name is a no-op"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "same name is a no-op: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "same name is a no-op: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "catalogRootProtected"
+      }
+    },
+    "step": "the catalog base folder cannot be renamed"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "the catalog base folder cannot be renamed: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "the catalog base folder cannot be renamed: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "catalogRootProtected"
+      }
+    },
+    "step": "an ancestor of the catalog base folder cannot be renamed"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "an ancestor of the catalog base folder cannot be renamed: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "an ancestor of the catalog base folder cannot be renamed: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "Zielpfad liegt in einem geschuetzten Systemverzeichnis (<ROOT>/cat/Neu) und wird abgelehnt"
+      }
+    },
+    "step": "new path is protected"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "new path is protected: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "new path is protected: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "Zielpfad enthaelt ein geschuetztes Verzeichnis (<ROOT>/cat/Deko/sub) und wird abgelehnt"
+      }
+    },
+    "step": "folder contains a protected directory"
+  },
+  {
+    "result": {
+      "ok": []
+    },
+    "step": "folder contains a protected directory: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "folder contains a protected directory: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "renameTargetFolderExists",
+        "params": [
+          "<ROOT>/cat/Target"
+        ]
+      }
+    },
+    "step": "name taken by a folder on disk"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Target"
+      ]
+    },
+    "step": "name taken by a folder on disk: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "name taken by a folder on disk: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "renameTargetFolderExists",
+        "params": [
+          "<ROOT>/cat/Datei"
+        ]
+      }
+    },
+    "step": "name taken by a file on disk"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Datei"
+      ]
+    },
+    "step": "name taken by a file on disk: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Datei",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "name taken by a file on disk: state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "database error: UNIQUE constraint failed: folders.path"
+      }
+    },
+    "step": "name taken only in the catalog (disk rename undone)"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Phantom",
+        "SymlinkMetadata <ROOT>/cat/Phantom",
+        "Rename <ROOT>/cat/Deko2 -> <ROOT>/cat/Phantom",
+        "SymlinkMetadata <ROOT>/cat/Deko2",
+        "Rename <ROOT>/cat/Phantom -> <ROOT>/cat/Deko2"
+      ]
+    },
+    "step": "name taken only in the catalog (disk rename undone): disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|Phantom|1|<ROOT>/cat/Phantom"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Datei",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "cat/Target/",
+          "elsewhere/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "name taken only in the catalog (disk rename undone): state"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "<io error: not found>"
+      }
+    },
+    "step": "source missing on disk"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Ziel",
+        "SymlinkMetadata <ROOT>/cat/Ziel",
+        "Rename <ROOT>/cat/Target -> <ROOT>/cat/Ziel"
+      ]
+    },
+    "step": "source missing on disk: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|sub|2|<ROOT>/cat/Deko/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|Phantom|1|<ROOT>/cat/Phantom"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Datei",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/sub/",
+          "cat/Deko/sub/b.3mf",
+          "cat/Deko/sub/b_extras/",
+          "cat/Deko/sub/b_extras/live.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "elsewhere/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "source missing on disk: state"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "success: nested folders, models and companion files"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Decor",
+        "SymlinkMetadata <ROOT>/cat/Decor",
+        "Rename <ROOT>/cat/Deko -> <ROOT>/cat/Decor"
+      ]
+    },
+    "step": "success: nested folders, models and companion files: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Decor/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Decor/sub/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Decor/sub/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Decor/a.3mf|2|-",
+          "2|<ROOT>/cat/Decor/sub/b.3mf|3|-",
+          "3|<ROOT>/cat/Decor/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Decor|1|<ROOT>/cat/Decor",
+          "3|sub|2|<ROOT>/cat/Decor/sub",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|Phantom|1|<ROOT>/cat/Phantom"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Datei",
+          "cat/Decor/",
+          "cat/Decor/a.3mf",
+          "cat/Decor/a_extras/",
+          "cat/Decor/a_extras/a.png",
+          "cat/Decor/sub/",
+          "cat/Decor/sub/b.3mf",
+          "cat/Decor/sub/b_extras/",
+          "cat/Decor/sub/b_extras/live.png",
+          "cat/Decor/t.3mf",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "elsewhere/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "success: nested folders, models and companion files: state"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "success: name with non-ASCII characters"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Decor/Übersicht",
+        "SymlinkMetadata <ROOT>/cat/Decor/Übersicht",
+        "Rename <ROOT>/cat/Decor/sub -> <ROOT>/cat/Decor/Übersicht"
+      ]
+    },
+    "step": "success: name with non-ASCII characters: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Decor/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Decor/Übersicht/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Decor/Übersicht/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Decor/a.3mf|2|-",
+          "2|<ROOT>/cat/Decor/Übersicht/b.3mf|3|-",
+          "3|<ROOT>/cat/Decor/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Decor|1|<ROOT>/cat/Decor",
+          "3|Übersicht|2|<ROOT>/cat/Decor/Übersicht",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|Phantom|1|<ROOT>/cat/Phantom"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Datei",
+          "cat/Decor/",
+          "cat/Decor/a.3mf",
+          "cat/Decor/a_extras/",
+          "cat/Decor/a_extras/a.png",
+          "cat/Decor/t.3mf",
+          "cat/Decor/Übersicht/",
+          "cat/Decor/Übersicht/b.3mf",
+          "cat/Decor/Übersicht/b_extras/",
+          "cat/Decor/Übersicht/b_extras/live.png",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "elsewhere/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "success: name with non-ASCII characters: state"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "the renamed folder again under its old name"
+  },
+  {
+    "result": {
+      "ok": [
+        "SymlinkMetadata <ROOT>/cat/Deko",
+        "SymlinkMetadata <ROOT>/cat/Deko",
+        "Rename <ROOT>/cat/Decor -> <ROOT>/cat/Deko"
+      ]
+    },
+    "step": "the renamed folder again under its old name: disk calls"
+  },
+  {
+    "result": {
+      "ok": {
+        "companions": [
+          "1|1|<ROOT>/cat/Deko/a_extras/a.png|0|-",
+          "2|2|<ROOT>/cat/Deko/Übersicht/b_extras/live.png|0|-",
+          "3|2|<ROOT>/cat/Deko/Übersicht/b_extras/gone.png|1|<ROOT>/trash/companion-3-gone.png",
+          "4|4|<ROOT>/cat/Deko2/c_extras/c.png|0|-"
+        ],
+        "files": [
+          "1|<ROOT>/cat/Deko/a.3mf|2|-",
+          "2|<ROOT>/cat/Deko/Übersicht/b.3mf|3|-",
+          "3|<ROOT>/cat/Deko/t.3mf|2|<ROOT>/trash/t.3mf",
+          "4|<ROOT>/cat/Deko2/c.3mf|4|-"
+        ],
+        "folders": [
+          "1|cat|-|<ROOT>/cat",
+          "2|Deko|1|<ROOT>/cat/Deko",
+          "3|Übersicht|2|<ROOT>/cat/Deko/Übersicht",
+          "4|Deko2|1|<ROOT>/cat/Deko2",
+          "5|Target|1|<ROOT>/cat/Target",
+          "6|Phantom|1|<ROOT>/cat/Phantom"
+        ],
+        "tree": [
+          "cat/",
+          "cat/Datei",
+          "cat/Deko/",
+          "cat/Deko/a.3mf",
+          "cat/Deko/a_extras/",
+          "cat/Deko/a_extras/a.png",
+          "cat/Deko/t.3mf",
+          "cat/Deko/Übersicht/",
+          "cat/Deko/Übersicht/b.3mf",
+          "cat/Deko/Übersicht/b_extras/",
+          "cat/Deko/Übersicht/b_extras/live.png",
+          "cat/Deko2/",
+          "cat/Deko2/c.3mf",
+          "cat/Deko2/c_extras/",
+          "cat/Deko2/c_extras/c.png",
+          "elsewhere/",
+          "outside/",
+          "outside/a.png",
+          "outside/c.png",
+          "outside/gone.png",
+          "outside/live.png",
+          "trash/",
+          "trash/companion-3-gone.png",
+          "trash/t.3mf"
+        ]
+      }
+    },
+    "step": "the renamed folder again under its old name: state"
+  }
+]
+
+== tables ==
+[folders] 6 row(s)
+  id=1 | name=cat | parent_id=NULL | path=<ROOT>/cat
+  id=2 | name=Deko | parent_id=1 | path=<ROOT>/cat/Deko
+  id=3 | name=Übersicht | parent_id=2 | path=<ROOT>/cat/Deko/Übersicht
+  id=4 | name=Deko2 | parent_id=1 | path=<ROOT>/cat/Deko2
+  id=5 | name=Target | parent_id=1 | path=<ROOT>/cat/Target
+  id=6 | name=Phantom | parent_id=1 | path=<ROOT>/cat/Phantom
+[files] 4 row(s)
+  id=1 | name=a.3mf | path=<ROOT>/cat/Deko/a.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=b.3mf | path=<ROOT>/cat/Deko/Übersicht/b.3mf | file_type=3mf | folder_id=3 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=3 | name=t.3mf | path=<ROOT>/cat/Deko/t.3mf | file_type=3mf | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=<ROOT>/trash/t.3mf | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=4 | name=c.3mf | path=<ROOT>/cat/Deko2/c.3mf | file_type=3mf | folder_id=4 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 4 row(s)
+  id=1 | file_id=1 | name=a.png | path=<ROOT>/cat/Deko/a_extras/a.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=2 | file_id=2 | name=live.png | path=<ROOT>/cat/Deko/Übersicht/b_extras/live.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+  id=3 | file_id=2 | name=gone.png | path=<ROOT>/cat/Deko/Übersicht/b_extras/gone.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=<TS> | trash_path=<ROOT>/trash/companion-3-gone.png
+  id=4 | file_id=4 | name=c.png | path=<ROOT>/cat/Deko2/c_extras/c.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=NULL | trash_path=NULL
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+cat/
+cat/Datei (1 bytes)
+cat/Deko/
+cat/Deko/a.3mf (5 bytes)
+cat/Deko/a_extras/
+cat/Deko/a_extras/a.png (16 bytes)
+cat/Deko/t.3mf (5 bytes)
+cat/Deko/Übersicht/
+cat/Deko/Übersicht/b.3mf (5 bytes)
+cat/Deko/Übersicht/b_extras/
+cat/Deko/Übersicht/b_extras/live.png (16 bytes)
+cat/Deko2/
+cat/Deko2/c.3mf (5 bytes)
+cat/Deko2/c_extras/
+cat/Deko2/c_extras/c.png (16 bytes)
+elsewhere/
+outside/
+outside/a.png (16 bytes)
+outside/c.png (16 bytes)
+outside/gone.png (16 bytes)
+outside/live.png (16 bytes)
+trash/
+trash/companion-3-gone.png (16 bytes)
+trash/t.3mf (5 bytes)

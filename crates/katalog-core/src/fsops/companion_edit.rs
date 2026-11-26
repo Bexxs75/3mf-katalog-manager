@@ -173,6 +173,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             companions: vec![step],
             extras_dir,
             companion_rows: s.rows.clone(),
+            restore: None,
             companion_add: None,
         }
     }
@@ -227,6 +228,39 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         self.name_trash_steps(&mut steps, s.root, &op_id)?;
         let step = steps.remove(0);
         self.run_edit(op_id, Operation::CompanionTrash, &s, step, None)
+    }
+
+    /// Removes the row of an active companion file whose file is gone from the disk. Changes
+    /// the database only (journalled as `CompanionTrash` without a source) and never moves
+    /// a file; a file that is there (again) ends in `Changed` (the removal callers report it as "file is back").
+    pub fn remove_missing_companion(&mut self, companion_id: i64) -> Result<()> {
+        let s = self.load_subject(companion_id)?;
+        if s.row.deleted_at.is_some() || s.model.deleted_at.is_some() {
+            return Err(Error::Conflict);
+        }
+        #[cfg(test)]
+        super::tests::at_point("remove_missing_before_db_only", 0);
+        self.ensure_source_missing(&s.row.path)?;
+        let step = CompanionStep {
+            before: s.row.clone(),
+            after: Some(CompanionState {
+                deleted_at: Some(chrono::Utc::now().to_rfc3339()),
+                trash_path: None,
+                ..s.row.clone()
+            }),
+            source: None,
+            target: None,
+            identity: None,
+        };
+        let intent = self.companion_intent(journal::op_id()?, Operation::CompanionTrash, &s, step, None);
+        self.journal.add(intent.clone())?;
+        #[cfg(test)]
+        super::tests::before_mutation();
+        if let Err(e) = self.db.with_conn(|c| commit_companion_edit(c, &intent)) {
+            self.journal.remove(&intent.op_id)?;
+            return Err(e);
+        }
+        self.finish_companion_edit(&intent)
     }
 
     /// Brings one removed companion file back next to its model, under a free name.
@@ -322,6 +356,16 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     /// Deletes a removed companion file for good (empty trash). `cutoff` is the
     /// emptying's own cut-off: a file removed later is left alone.
     pub(super) fn purge_loose_companion(&mut self, companion_id: i64, cutoff: Option<chrono::DateTime<chrono::FixedOffset>>) -> Result<()> {
+        self.ready()?;
+        if companion_id <= 0 { return Err(Error::InvalidArguments); }
+        let row = self.db.with_conn(|c| read_companion(c, companion_id))?.ok_or(Error::NotFound)?;
+        if self.desktop_matches(row.trash_path.as_deref(), row.id, true) {
+            let record = self.db.with_conn(|c| crate::db::companions::get_companion(c, companion_id).map_err(|_| Error::Internal))?
+                .ok_or(Error::NotFound)?;
+            validate_stored_fields(&record.name, &record.path, &record.kind).map_err(|_| Error::Inconsistent)?;
+            let model = self.state(row.file_id)?;
+            return self.purge_desktop(model, Some(row.id), cutoff).map(|_| ());
+        }
         let s = self.load_subject(companion_id)?;
         // A trashed model owns its companions; only a live model's removed files are loose.
         if s.row.deleted_at.is_none() || s.model.deleted_at.is_some() {

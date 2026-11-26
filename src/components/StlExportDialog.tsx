@@ -3,7 +3,8 @@ import { useEffect, useId, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { displayName } from '../lib/displayName';
 import { readPlateOverview } from '../lib/api/files';
-import { exportModelAsStl, showFolderInFileManager, type StlExportResult, type StlScope } from '../lib/api/stl';
+import { isReadOnly } from '../lib/readOnly';
+import { downloadModelAsStl, exportModelAsStl, showFolderInFileManager, type StlExportResult, type StlFormat, type StlScope } from '../lib/api/stl';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { useModalDialog } from '../hooks/useModalDialog';
@@ -31,10 +32,12 @@ export function StlExportDialog({ model, parts, onClose, onFinished }: Props) {
   const t = useT();
   const titleId = useId();
   const scopeName = useId();
+  const formatName = useId();
   const [phase, setPhase] = useState<'set' | 'saving' | 'done'>('set');
   const [plates, setPlates] = useState<number[]>([]);
   const [wholeModel, setWholeModel] = useState(true);
   const [plate, setPlate] = useState<number | null>(null);
+  const [format, setFormat] = useState<StlFormat>('binary');
   const [eachPart, setEachPart] = useState(parts?.initial === 'eachPart');
   const [error, setError] = useState<AppError | null>(null);
   const [result, setResult] = useState<StlExportResult | null>(null);
@@ -42,6 +45,7 @@ export function StlExportDialog({ model, parts, onClose, onFinished }: Props) {
   const closeDone = onFinished ?? onClose;
   const dialogRef = useModalDialog({ open: true, onClose: () => (phase === 'done' ? closeDone() : onClose()), busy: phase === 'saving', initialFocus: '[data-initial-focus]' });
   const type = model.fileType.toLowerCase();
+  const web = isReadOnly();
 
   // Only a 3MF has plates; the list comes from the file when the dialog opens. A failed read just
   // leaves out the choice, the whole model can still be saved.
@@ -64,7 +68,7 @@ export function StlExportDialog({ model, parts, onClose, onFinished }: Props) {
     setError(null);
     setPhase('saving');
     try {
-      const saved = await exportModelAsStl(model.id, scope);
+      const saved = web ? await downloadModelAsStl(model.id, model.name, scope, format) : await exportModelAsStl(model.id, scope, format);
       if (saved === null) { setPhase('set'); return; }
       setResult(saved);
       setPhase('done');
@@ -91,15 +95,15 @@ export function StlExportDialog({ model, parts, onClose, onFinished }: Props) {
 
         {phase === 'done' && result ? (
           <>
-            <p role="status" className="m-0 mb-1 font-semibold">{t('stDone')}</p>
+            <p role="status" className="m-0 mb-1 font-semibold">{t(web ? 'stDownloaded' : 'stDone')}</p>
             <p className="m-0 mb-2 font-code text-small break-all text-[var(--ink-2)]">{result.fileCount > 1 ? t('stDoneMany').replace('{n}', String(result.fileCount)) : displayName(result.name)}</p>
             {result.inCatalogFolder && <p className="m-0 mb-2 text-small text-[var(--ink-2)]">{t('stDoneInCatalog')}</p>}
             {folderError && <p role="alert" className="m-0 mb-2 text-small text-[var(--accent)]"><ErrorText error={folderError} /></p>}
             <div className="flex gap-2 justify-end mt-3">
-              <button type="button" className={buttonClass}
+              {!web && <button type="button" className={buttonClass}
                 onClick={() => { setFolderError(null); showFolderInFileManager(result.folder).catch(e => setFolderError(toAppError(e))); }}>
                 {t('showInFileManager')}
-              </button>
+              </button>}
               <button type="button" data-initial-focus onClick={closeDone} className={primaryClass}>{t('stClose')}</button>
             </div>
           </>
@@ -136,13 +140,25 @@ export function StlExportDialog({ model, parts, onClose, onFinished }: Props) {
                 </label>
               </fieldset>
             )}
+            <fieldset className="m-0 mb-3 p-0 border-0">
+              <legend className="ui-label text-[var(--ink-3)] mb-1">{t('stFormat')}</legend>
+              <label className="flex items-center gap-2 py-1 cursor-pointer">
+                <input type="radio" name={formatName} checked={format === 'binary'} disabled={phase === 'saving'} onChange={() => setFormat('binary')} />
+                {t('stFormatBinary')}
+              </label>
+              <label className="flex items-center gap-2 py-1 cursor-pointer">
+                <input type="radio" name={formatName} checked={format === 'ascii'} disabled={phase === 'saving'} onChange={() => setFormat('ascii')} />
+                {t('stFormatAscii')}
+              </label>
+              {format === 'ascii' && <p className="m-0 mt-1 text-small text-[var(--ink-2)]">{t('stFormatAsciiNote')}</p>}
+            </fieldset>
             {noteColors && <p className="m-0 mb-1 text-small text-[var(--ink-2)]">{t('stNoteColors')}</p>}
             {!parts && manyPlates && wholeModel && <p className="m-0 mb-1 text-small text-[var(--ink-2)]">{t('stNotePlates')}</p>}
             {phase === 'saving' && <p role="status" className="m-0 mt-2 text-small">{t('stSaving')}</p>}
             {error && <p role="alert" className="m-0 mt-2 text-small text-[var(--accent)]"><ErrorText error={error} /></p>}
             <div className="flex gap-2 justify-end mt-3">
               <button type="button" onClick={onClose} disabled={phase === 'saving'} className={buttonClass}>{t('cancel')}</button>
-              <button type="button" data-initial-focus onClick={() => void save()} disabled={phase === 'saving'} className={primaryClass}>{t('stNext')}</button>
+              <button type="button" data-initial-focus onClick={() => void save()} disabled={phase === 'saving'} className={primaryClass}>{t(web ? 'stDownload' : 'stNext')}</button>
             </div>
           </>
         )}

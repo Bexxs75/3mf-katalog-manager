@@ -7,8 +7,8 @@ pub use dto::*;
 pub use error::{GeometryErrorCode, ReadError};
 pub use plate_overview::read_plate_overview;
 pub use geometry::{
-    encode_render_meshes, geometry_io_error, get_model_geometry, get_model_geometry_with_limits, load_geometry_source,
-    load_render_meshes, GeometrySource,
+    encode_render_meshes, geometry_io_error, get_model_geometry, get_model_geometry_with_limits, load_geometry_source, load_render_meshes_with_limits,
+    load_render_meshes, open_geometry_file, GeometrySource,
 };
 pub type ReadResult<T> = Result<T, ReadError>;
 use crate::{db, error_code::ErrorCode, threemf};
@@ -423,7 +423,7 @@ pub fn list_collections(conn: &Connection) -> ReadResult<Vec<CollectionDto>> {
     Ok(collections.into_iter().map(to_collection_dto).collect())
 }
 
-/// Every bundle with at least two members (members in the trash included), oldest first.
+/// Every bundle with at least one member (members in the trash included), oldest first.
 pub fn list_bundles(conn: &Connection) -> ReadResult<Vec<BundleDto>> {
     let bundles = db::bundles::list_bundles(conn).map_err(ReadError::from)?;
     Ok(bundles.into_iter().map(to_bundle_dto).collect())

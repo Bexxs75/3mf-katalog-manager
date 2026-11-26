@@ -340,8 +340,12 @@ fn contract_08_heartbeat_continues_during_five_second_blocked_read() {
             name == "import://progress" && *time >= blocked_at && *time <= released_at
         })
         .collect();
+    // One event per 250 ms sleep gives 20 in five seconds. macOS wakes a sleeping thread
+    // noticeably late on a shared runner, so fewer fit there; that the beat never pauses
+    // is what the gap check below proves on every system.
+    let at_least = if cfg!(target_os = "macos") { 14 } else { 18 };
     assert!(
-        progress.len() >= 18,
+        progress.len() >= at_least,
         "heartbeat stopped while read was blocked: {} events",
         progress.len()
     );
@@ -966,7 +970,9 @@ fn imports_files_already_in_placement_target_without_moving_them() {
     }
 }
 
-#[cfg(unix)]
+// macOS refuses to create a file whose name is not valid UTF-8 ("illegal byte sequence"),
+// so such a name cannot reach an import there.
+#[cfg(all(unix, not(target_os = "macos")))]
 #[test]
 fn non_utf8_import_names_are_never_renamed_lossily() {
     use std::os::unix::ffi::OsStringExt;

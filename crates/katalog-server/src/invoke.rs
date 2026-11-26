@@ -5,7 +5,7 @@ use axum::{
     Json,
 };
 use katalog_core::{
-    companion_read, db, disk_report,
+    catalog_issues, companion_read, db, disk_report, disk_sync_settings,
     error_code::{ErrorCode, LEGACY_CODES},
     read::{self, GeometryErrorCode, ReadError},
 };
@@ -18,29 +18,123 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 /// for good, which no in-process limit can interrupt; the request is answered instead.
 const DISK_REPORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Where the one start comparison of this server run stands (W2 5.4). The read command
+/// `run_start_sync` only reports it; it never starts anything.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StartSyncPhase {
+    #[default]
+    Off,
+    Running,
+    Done,
+    Skipped,
+}
+/// What the start comparison took over (only when new files were added automatically).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartSyncApplied {
+    pub added: usize,
+    pub renamed: usize,
+    pub failed: usize,
+}
+/// Same shape as the desktop `StartSyncResult` plus `state`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartSyncState {
+    pub ran: bool,
+    pub busy: bool,
+    pub state: StartSyncPhase,
+    pub new_files: usize,
+    pub renamed: usize,
+    pub missing_files: usize,
+    pub missing_folders: usize,
+    pub duplicates: usize,
+    pub unreachable_roots: usize,
+    pub applied: Option<StartSyncApplied>,
+}
+/// In-memory result of the start comparison; gone with the process.
+#[derive(Debug, Default)]
+pub struct StartSyncStore(std::sync::Mutex<StartSyncState>);
+impl StartSyncStore {
+    pub fn get(&self) -> StartSyncState {
+        *self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+    pub fn set(&self, state: StartSyncState) {
+        *self.0.lock().unwrap_or_else(|e| e.into_inner()) = state;
+    }
+}
+
+/// Set while catalog rows still wait for their content hash (`hash_backfill` in the web
+/// module). Imports and the "new files" scan are refused meanwhile: without hashes they
+/// would take every known file for a new one.
+#[derive(Default)]
+pub struct HashBackfillGate(std::sync::atomic::AtomicBool);
+impl HashBackfillGate {
+    pub fn pending(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    pub fn set(&self, pending: bool) {
+        self.0.store(pending, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// Limits of the web scan for missing models and duplicates (W2 2.11).
+const ISSUE_MAX_ORPHANED: usize = 500;
+const ISSUE_MAX_GROUPS: usize = 200;
+const ISSUE_MAX_DURATION: std::time::Duration = std::time::Duration::from_secs(20);
+
 pub struct GeometryGate {
+    /// The application shares this admission barrier with every catalog route and job.
+    pub barrier: crate::barrier::CatalogBarrier,
     workers: Arc<Semaphore>,
     manager_reads: Arc<Semaphore>,
     /// One disk comparison at a time: each walks the roots.
     disk_reports: Arc<Semaphore>,
     report_limits: disk_report::Limits,
+    /// Folders the comparison does not walk (the upload folder), like the preview.
+    report_excluded: Vec<PathBuf>,
     report_timeout: std::time::Duration,
+    issue_limits: catalog_issues::IssueLimits,
+    /// Result of the start comparison, written by `disk_start_sync`, read by `run_start_sync`.
+    pub start_sync: Arc<StartSyncStore>,
+    /// Open hash run after a restore; see [`HashBackfillGate`].
+    pub hash_backfill: Arc<HashBackfillGate>,
     admission: Arc<Semaphore>,
+    /// STEP parsing in a separate process; disabled unless the server found a working one.
+    pub step: Arc<crate::step_worker::StepWorker>,
 }
 impl Default for GeometryGate {
     fn default() -> Self {
         Self {
+            barrier: crate::barrier::CatalogBarrier::default(),
             workers: Arc::new(Semaphore::new(2)),
             manager_reads: Arc::new(Semaphore::new(4)),
             disk_reports: Arc::new(Semaphore::new(1)),
             report_limits: disk_report::Limits::default(),
+            report_excluded: Vec::new(),
             report_timeout: DISK_REPORT_TIMEOUT,
+            issue_limits: catalog_issues::IssueLimits {
+                max_orphaned: ISSUE_MAX_ORPHANED,
+                max_groups: ISSUE_MAX_GROUPS,
+                max_duration: ISSUE_MAX_DURATION,
+            },
+            start_sync: Arc::new(StartSyncStore::default()),
+            hash_backfill: Arc::new(HashBackfillGate::default()),
             admission: Arc::new(Semaphore::new(10)),
+            step: Arc::new(crate::step_worker::StepWorker::disabled()),
         }
     }
 }
 impl GeometryGate {
-    async fn acquire(&self) -> Result<(OwnedSemaphorePermit, OwnedSemaphorePermit), Box<Response>> {
+    pub fn with_step(step: crate::step_worker::StepWorker) -> Self {
+        Self { step: Arc::new(step), ..Self::default() }
+    }
+    /// The folders the disk comparison leaves out, the same ones the preview refuses.
+    pub fn with_report_excluded(mut self, excluded: Vec<PathBuf>) -> Self {
+        self.report_excluded = excluded;
+        self
+    }
+    pub(crate) async fn acquire(&self) -> Result<(OwnedSemaphorePermit, OwnedSemaphorePermit), Box<Response>> {
         let admission = self.admission.clone().try_acquire_owned().map_err(|_| {
             error(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::WebTooManyRequests, &[])
         })?;
@@ -48,6 +142,21 @@ impl GeometryGate {
             error(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::GeometryUnavailable, &[])
         })?;
         Ok((admission, worker))
+    }
+    #[cfg(test)]
+    pub(crate) fn manager_reads_available(&self) -> usize {
+        self.manager_reads.available_permits()
+    }
+    /// Admission for catalog reads that load and match many rows: at most four run at
+    /// once, the rest get a repeatable answer. The caller moves the permit into the
+    /// blocking work so it is held until that work really ends, not until the HTTP
+    /// request goes away.
+    pub(crate) fn manager_read(&self) -> Result<OwnedSemaphorePermit, Box<Response>> {
+        self.manager_reads.clone().try_acquire_owned().map_err(|_| {
+            let mut r = *error(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::WebTooManyRequests, &[]);
+            r.headers_mut().insert("retry-after", "1".parse().unwrap());
+            Box::new(r)
+        })
     }
 }
 /// An answer whose `message` is a registered code; the interface owns the wording.
@@ -130,8 +239,36 @@ fn ids(args: &Value, images: bool) -> Result<Vec<String>, Box<Response>> {
 
 /// Encoded picture bytes after which `list_file_images` defers the remaining entries.
 const IMAGE_RESPONSE_BUDGET: usize = 24 * 1024 * 1024;
+// The two list commands that answer with every row of a table. Measured with 100 000 rows:
+// ~71 MB / ~580 MB RSS (summaries), ~90 MB / ~690 MB RSS (trash). Past these counts the
+// answer is refused (`webLimitReached`) before any row is loaded; ordinary catalogs are
+// unaffected (50 000 summaries are ~36 MB). Server path only, the desktop calls the core directly.
+const MAX_LIST_SUMMARIES: i64 = 50_000;
+const MAX_LIST_TRASH: i64 = 20_000;
+fn guard_row_count(conn: &rusqlite::Connection, count_sql: &str, max: i64) -> Result<(), ReadError> {
+    let count: i64 = conn.query_row(count_sql, [], |r| r.get(0)).map_err(|e| ReadError::from(db::error::DbError::from(e)))?;
+    if count > max {
+        return Err(ReadError::coded_with(ErrorCode::WebLimitReached, [max]));
+    }
+    Ok(())
+}
 pub const READ_COMMANDS: &[&str] = &[
+    "list_source_dirs",
+    "list_source_folders",
+    "scan_source_folders",
+    "get_source_check_on_start",
+    "scan_catalog_issues",
+    "get_sync_on_start",
+    "get_sync_auto_add",
+    "run_start_sync",
+    "get_printer_link_enabled",
+    "list_printer_connections",
+    "list_open_printer_jobs",
+    "preview_printer_job",
+    "get_printer_job_thumbnail",
+
     "folder_removal_summary",
+    "folder_trash_summary",
     "empty_trash_summary",
     "get_import_state",
     "get_import_result",
@@ -195,6 +332,26 @@ fn trash_summary(conn: &katalog_core::write::Connection, roots: &[PathBuf]) -> R
         "maxDeletedAt": summary.max_deleted_at,
     }))
 }
+/// Same counts and rules as the desktop dialog. A folder outside the configured roots is not
+/// something the web manages, so it is answered like an unknown one and its disk is not scanned.
+fn folder_trash_summary(
+    conn: &katalog_core::write::Connection,
+    id: &str,
+    roots: &[PathBuf],
+) -> Result<Option<Value>, ReadError> {
+    use katalog_core::folder_trash::{folder_trash_summary_with_conn, StdFolderTrashFs};
+    let path: Option<String> = conn
+        .query_row("SELECT path FROM folders WHERE id=?1", [id], |r| r.get(0))
+        .ok();
+    let Some(path) = path else { return Ok(None) };
+    if !roots.iter().any(|root| std::path::Path::new(&path).starts_with(root)) {
+        return Ok(None);
+    }
+    match folder_trash_summary_with_conn(&StdFolderTrashFs, conn, id, &[]) {
+        Ok(summary) => Ok(Some(json!(summary))),
+        Err(_) => Err(ReadError::coded(ErrorCode::WebServerInternal)),
+    }
+}
 fn folder_summary(
     conn: &katalog_core::write::Connection,
     id: i64,
@@ -217,6 +374,55 @@ fn folder_summary(
     ))
 }
 
+/// Missing models and duplicates for the web: only rows the probe positively judged count, the
+/// answer carries full DTOs for the hits only (never the whole catalog with its pictures).
+fn scan_issues(conn: &rusqlite::Connection, roots: &[PathBuf], limits: catalog_issues::IssueLimits) -> Result<Value, ReadError> {
+    // Same root numbering as `disk_sync_report`, so `root` means the same in both answers.
+    let ordered = disk_report::ordered_roots(roots);
+    let probe = catalog_issues::RootsMissingProbe::new(&ordered);
+    let issues = catalog_issues::scan(conn, &probe, limits).map_err(|_| ReadError::from("Abgleich nicht verfügbar"))?;
+    let ids: Vec<i64> = issues.orphaned.iter().chain(issues.duplicate_groups.iter().flatten()).copied().collect();
+    // Chunked: a few huge duplicate groups must not exceed SQLite's variable limit.
+    let mut files = Vec::with_capacity(ids.len());
+    for chunk in ids.chunks(500) {
+        files.extend(db::list_files_by_ids(conn, chunk).map_err(ReadError::from)?);
+    }
+    let spools = db::list_filament_spools(conn).map_err(ReadError::from)?;
+    let mut by_id: std::collections::HashMap<i64, read::ModelFileDto> =
+        files.into_iter().map(|f| (f.id, read::to_dto(f, &spools))).collect();
+    // A row that vanished since the scan (deleted meanwhile) is left out, not an error.
+    let orphaned: Vec<_> = issues.orphaned.iter().filter_map(|id| by_id.remove(id)).collect();
+    let by_listed: std::collections::HashSet<i64> = orphaned.iter().filter_map(|m| m.id.parse().ok()).collect();
+    let groups: Vec<Vec<_>> = issues
+        .duplicate_groups
+        .iter()
+        .map(|g| g.iter().filter_map(|id| by_id.remove(id)).collect::<Vec<_>>())
+        .filter(|g| g.len() >= 2)
+        .collect();
+    let mut answer = json!({"orphaned": orphaned, "duplicateGroups": groups, "truncated": issues.truncated});
+    // Only present when there is something to say (older clients ignore both).
+    if !issues.unclear.is_empty() {
+        answer["unclear"] = issues
+            .unclear
+            .iter()
+            .map(|u| json!({"path": u.place.relative, "root": u.place.root, "reason": u.reason}))
+            .collect();
+    }
+    // Display names only (like the report's `roots[].name`), indexed like `root`; never absolute paths.
+    answer["roots"] = json!(disk_report::root_names(&ordered));
+    // Always present, also empty: a present field tells the client the folders were verified here.
+    answer["missingFolders"] = issues
+        .missing_folders
+        .iter()
+        .map(|f| {
+            let models: Vec<String> =
+                f.models.iter().filter(|id| by_listed.contains(id)).map(|id| id.to_string()).collect();
+            json!({"relativePath": f.place.relative, "root": f.place.root, "models": models})
+        })
+        .collect();
+    Ok(answer)
+}
+
 pub async fn invoke(
     db_path: PathBuf,
     roots: Vec<PathBuf>,
@@ -232,9 +438,16 @@ pub async fn invoke(
     }
     if matches!(
         command.as_str(),
-        "folder_removal_summary" | "empty_trash_summary" | "disk_sync_report"
+        "folder_removal_summary"
+            | "folder_trash_summary"
+            | "empty_trash_summary"
+            | "disk_sync_report"
+            | "scan_catalog_issues"
+            | "get_sync_on_start"
+            | "get_sync_auto_add"
+            | "run_start_sync"
     ) {
-        let allowed: &[&str] = if command == "folder_removal_summary" {
+        let allowed: &[&str] = if command == "folder_removal_summary" || command == "folder_trash_summary" {
             &["folderId"]
         } else {
             &[]
@@ -249,7 +462,7 @@ pub async fn invoke(
         }
     }
     let file_id = match command.as_str() {
-        "folder_removal_summary" => match id(&args, "folderId") {
+        "folder_removal_summary" | "folder_trash_summary" => match id(&args, "folderId") {
             Ok(value) => Some(value),
             Err(error) => return *error,
         },
@@ -295,7 +508,8 @@ pub async fn invoke(
     };
     match command.as_str() {
         "get_app_version" => return Json(json!(env!("CARGO_PKG_VERSION"))).into_response(),
-        "is_preview_build" | "has_step_preview" => return Json(json!(false)).into_response(),
+        "is_preview_build" => return Json(json!(false)).into_response(),
+        "has_step_preview" => return Json(json!(gate.step.available())).into_response(),
         _ => {}
     }
     // The file-management UI asks for the individually removed files as well; the plain listing stays as it was.
@@ -338,19 +552,17 @@ pub async fn invoke(
             | "companion_image_data"
             | "list_companions"
             | "disk_sync_report"
+            | "scan_catalog_issues"
     ) {
-        match gate.manager_reads.clone().try_acquire_owned() {
+        match gate.manager_read() {
             Ok(p) => Some(p),
-            Err(_) => {
-                let mut r = *error(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::WebTooManyRequests, &[]);
-                r.headers_mut().insert("retry-after", "1".parse().unwrap());
-                return r;
-            }
+            Err(r) => return *r,
         }
     } else {
         None
     };
-    let report_permit = if command == "disk_sync_report" {
+    let is_scan = matches!(command.as_str(), "disk_sync_report" | "scan_catalog_issues");
+    let report_permit = if is_scan {
         match gate.disk_reports.clone().try_acquire_owned() {
             Ok(p) => Some(p),
             Err(_) => {
@@ -362,20 +574,30 @@ pub async fn invoke(
     } else {
         None
     };
-    if command == "disk_sync_report" {
-        let (limits, wait) = (gate.report_limits, gate.report_timeout);
+    let catalog_guard = match gate.barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
+    // The start comparison's stored result: memory only, no catalog access.
+    if command == "run_start_sync" {
+        drop(catalog_guard);
+        return Json(gate.start_sync.get()).into_response();
+    }
+    if is_scan {
+        let (limits, wait, excluded) = (gate.report_limits, gate.report_timeout, gate.report_excluded.clone());
+        let (issue_limits, issues) = (gate.issue_limits, command == "scan_catalog_issues");
         let (tx, rx) = tokio::sync::oneshot::channel();
         // A thread of its own, not the blocking pool: the scan may never return. The permits
         // move into it on purpose and are released only when it ends, so a stuck scan keeps
         // blocking further ones (single flight, manager gate) instead of piling up new threads.
         let started = std::thread::Builder::new().name("disk-report".into()).spawn(move || {
-            let _held = (manager_permit, report_permit);
+            let _held = (catalog_guard, manager_permit, report_permit);
             let outcome = (|| -> Result<Value, ReadError> {
                 let conn = db::open_read_only(&db_path).map_err(ReadError::from)?;
+                if issues {
+                    return scan_issues(&conn, &roots, issue_limits);
+                }
                 // The database is only read for the copy; the disk scan runs without it.
                 let snapshot = disk_report::snapshot(&conn).map_err(|_| ReadError::from("Abgleich nicht verfügbar"))?;
                 drop(conn);
-                serde_json::to_value(disk_report::build_report(&snapshot, &roots, limits))
+                serde_json::to_value(disk_report::build_report_with(&snapshot, &roots, disk_report::ReportOptions { limits, excluded: &excluded }))
                     .map_err(|_| ReadError::from("Antwort konnte nicht kodiert werden"))
             })();
             let _ = tx.send(outcome);
@@ -390,6 +612,37 @@ pub async fn invoke(
             Err(_) => *error(StatusCode::GATEWAY_TIMEOUT, ErrorCode::RescanTimeout, &[]),
         };
     }
+    // A STEP preview has its own small number of places and must hear "busy" at once instead of
+    // queueing behind 3MF parses, so its type is known before the parser gate is waited for.
+    if command == "get_model_geometry" && gate.step.available() {
+        let (lookup_db, lookup_id) = (db_path.clone(), file_id.clone().unwrap());
+        let source = tokio::task::spawn_blocking(move || {
+            let conn = db::open_read_only(&lookup_db).map_err(ReadError::from)?;
+            read::load_geometry_source(&conn, &lookup_id)
+        })
+        .await;
+        match source {
+            Ok(Ok(source)) if source.file_type == katalog_core::db::models::FileType::Stp => {
+                let Ok(slot) = gate.step.try_slot() else { return step_busy() };
+                let step = gate.step.clone();
+                let result = tokio::task::spawn_blocking(move || {
+                    // Place and catalog guard live with the blocking work: a dropped request does
+                    // not free a place while its worker still runs.
+                    let _held = (catalog_guard, slot);
+                    step_geometry(&step, &source.path, &roots)
+                })
+                .await;
+                return match result {
+                    Ok(Ok(response)) => response,
+                    Ok(Err(e)) => read_error(e),
+                    Err(_) => *error(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::WebServerInternal, &[]),
+                };
+            }
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => return read_error(e),
+            Err(_) => return *error(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::WebServerInternal, &[]),
+        }
+    }
     // Both open and parse a 3MF, so both wait for the parser gate.
     let permits = if matches!(command.as_str(), "get_model_geometry" | "read_plate_overview") {
         match gate.acquire().await {
@@ -401,6 +654,7 @@ pub async fn invoke(
     };
     let result = tokio::task::spawn_blocking(move || -> Result<Response, ReadError> {
         // The permits belong to this closure: cancelling HTTP does not release a running parser.
+        let _catalog_guard = catalog_guard;
         let _permits = permits;
         let _manager_permit = manager_permit;
         let _report_permit = report_permit;
@@ -447,10 +701,15 @@ pub async fn invoke(
                 }
                 encode(companion_read::image_data_uri(&mut file, head, &row.name).map_err(companion_error)?)
             }
-            "list_file_summaries" => encode(read::list_file_summaries(&conn)?),
+            "list_file_summaries" => {
+                guard_row_count(&conn, "SELECT COUNT(*) FROM files WHERE deleted_at IS NULL", MAX_LIST_SUMMARIES)?;
+                encode(read::list_file_summaries(&conn)?)
+            }
             "list_all_file_tags" => encode(read::list_all_file_tags(&conn)?),
             "list_files_by_ids" => encode(read::list_files_by_ids(&conn, file_ids)?),
             "list_tag_counts" => encode(read::list_tag_counts(&conn)?),
+            "get_sync_on_start" => encode(disk_sync_settings::flag(&conn, disk_sync_settings::SETTING_ON_START).map_err(ReadError::from)?),
+            "get_sync_auto_add" => encode(disk_sync_settings::flag(&conn, disk_sync_settings::SETTING_AUTO_ADD).map_err(ReadError::from)?),
             "get_auto_tagging" => encode(read::get_auto_tagging(&conn)?),
             "get_print_technology" => encode(read::get_print_technology(&conn)?),
             "list_blocked_auto_tags" => encode(read::list_blocked_auto_tags(&conn)?),
@@ -461,14 +720,41 @@ pub async fn invoke(
             "list_print_log_entries" => {
                 encode(read::list_print_log_entries(&conn, file_id.unwrap())?)
             }
-            "list_folders" => encode(read::list_folders(&conn)?),
+            "list_folders" => {
+                let mut folders = read::list_folders(&conn)?;
+                drop(conn);
+                crate::folder_missing::annotate(&mut folders, &roots);
+                encode(folders)
+            }
             "list_collections" => encode(read::list_collections(&conn)?),
             "list_bundles" => encode(read::list_bundles(&conn)?),
             "list_collection_files" => {
                 encode(read::list_collection_files(&conn, file_id.unwrap())?)
             }
-            "list_trash" => encode(read::list_trash(&conn)?),
+            "list_trash" => {
+                guard_row_count(&conn, "SELECT COUNT(*) FROM files WHERE deleted_at IS NOT NULL", MAX_LIST_TRASH)?;
+                let mut value = serde_json::to_value(read::list_trash(&conn)?).map_err(|_| ReadError::coded(ErrorCode::WebServerInternal))?;
+                let desktop_ids = katalog_core::fsops::desktop_trash_ids(&conn)
+                    .map_err(|_| ReadError::coded(ErrorCode::WebServerInternal))?;
+                if let Some(items) = value.as_array_mut() {
+                    for item in items {
+                        if let Some(id) = item["id"].as_str().and_then(|id| id.parse::<i64>().ok()) {
+                            if desktop_ids.contains(&id) {
+                                item["desktopTrash"] = serde_json::Value::Bool(true);
+                            }
+                        }
+                    }
+                }
+                encode(value)
+            },
             "empty_trash_summary" => encode(trash_summary(&conn, &roots)?),
+            "folder_trash_summary" => {
+                match folder_trash_summary(&conn, &file_id.unwrap(), &roots) {
+                    Ok(Some(summary)) => encode(summary),
+                    Ok(None) => Ok(*error(StatusCode::NOT_FOUND, ErrorCode::FolderNotFound, &[])),
+                    Err(e) => Err(e),
+                }
+            }
             "folder_removal_summary" => {
                 match folder_summary(&conn, file_id.unwrap().parse().unwrap())? {
                     Some(summary) => encode(summary),
@@ -488,8 +774,9 @@ pub async fn invoke(
             "get_model_geometry" => {
                 let source = read::load_geometry_source(&conn, &file_id.unwrap())?;
                 drop(conn);
-                // The read-only web has no configured budgets; the defaults are the
-                // largest values the configuration can set.
+                // STEP with a working worker was answered above; without one it takes the common
+                // path, which answers "unsupported". The read-only web has no configured budgets;
+                // the defaults are the largest values the configuration can set.
                 let bytes = read::get_model_geometry_with_limits(
                     &source.path,
                     Some(&roots),
@@ -510,6 +797,45 @@ pub async fn invoke(
         Ok(Ok(response)) => response,
         Ok(Err(e)) => read_error(e),
         Err(_) => *error(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::WebServerInternal, &[]),
+    }
+}
+
+/// A STEP preview from the worker; the caller holds a worker place. The file is admitted and
+/// opened here; the worker only gets the handle.
+fn step_geometry(
+    step: &crate::step_worker::StepWorker,
+    path: &std::path::Path,
+    roots: &[PathBuf],
+) -> Result<Response, ReadError> {
+    let file = read::open_geometry_file(path, roots)?;
+    let bytes = step
+        .run(crate::step_worker::Mode::Geometry, &file, step.limits().wall)
+        .map_err(step_read_error)?;
+    Ok(([("content-type", "application/octet-stream")], bytes).into_response())
+}
+/// Too many STEP previews at once: repeatable, with a hint when to try again.
+pub(crate) fn step_busy() -> Response {
+    let mut r = *error(StatusCode::TOO_MANY_REQUESTS, ErrorCode::WebTooManyRequests, &[]);
+    r.headers_mut().insert(
+        "retry-after",
+        crate::step_worker::StepWorker::RETRY_AFTER_SECONDS.to_string().parse().unwrap(),
+    );
+    r
+}
+/// Every worker outcome as a registered code; nothing of the parser's own text reaches the client.
+pub(crate) fn step_read_error(e: crate::step_worker::WorkerError) -> ReadError {
+    use crate::step_worker::WorkerError as W;
+    match e {
+        W::TooLarge => ReadError::coded_with(ErrorCode::FileTooLarge, [crate::step_worker::MAX_INPUT_BYTES.to_string()])
+            .with_code(GeometryErrorCode::TooLarge),
+        W::TooComplex => ReadError::coded(ErrorCode::PreviewTooLarge).with_code(GeometryErrorCode::TooLarge),
+        W::NoGeometry => ReadError::coded(ErrorCode::GeometryEmpty).with_code(GeometryErrorCode::Unreadable),
+        // For the viewer a crash or a broken answer means the same as a refused file: no preview.
+        W::Unreadable | W::Crashed | W::Protocol => {
+            ReadError::coded(ErrorCode::GeometryUnavailable).with_code(GeometryErrorCode::Unreadable)
+        }
+        W::Unavailable | W::NoIsolation | W::Busy => ReadError::coded_with(ErrorCode::FileFormatUnsupported, ["step"])
+            .with_code(GeometryErrorCode::Unsupported),
     }
 }
 
@@ -630,10 +956,11 @@ mod tests {
         // The scan thread still owns the single-flight permit and one manager permit.
         assert_eq!(gate.disk_reports.available_permits(), 0);
         assert_eq!(gate.manager_reads.available_permits(), 3);
+        assert_eq!(gate.barrier.snapshot().readers, 1);
         let again = invoke(c.db.clone(), vec![c.dir.clone()], "disk_sync_report".into(), json!({}), gate.clone()).await;
         assert_eq!(again.status(), StatusCode::SERVICE_UNAVAILABLE);
         for _ in 0..100 {
-            if gate.disk_reports.available_permits() == 1 && gate.manager_reads.available_permits() == 4 {
+            if gate.disk_reports.available_permits() == 1 && gate.manager_reads.available_permits() == 4 && gate.barrier.snapshot().readers == 0 {
                 return;
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -655,6 +982,235 @@ mod tests {
         let r = invoke(c.db.clone(), vec![c.dir.clone()], "disk_sync_report".into(), json!({}), Arc::new(gate)).await;
         assert_eq!(r.status(), StatusCode::OK);
         assert!(committed.load(std::sync::atomic::Ordering::SeqCst), "the walk never ran");
+    }
+
+    /// A catalog with: two live copies of one hash, a missing model, a model that is only
+    /// "unclear" (directory without permission is not available as root), and one outside the roots.
+    struct Issues {
+        dir: PathBuf,
+        db: PathBuf,
+    }
+    impl Drop for Issues {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(self.dir.parent().unwrap());
+        }
+    }
+    fn issues_catalog() -> Issues {
+        let mut random = [0u8; 16];
+        getrandom::fill(&mut random).unwrap();
+        let base = std::env::temp_dir().join(format!("server-issues-{:x}", u128::from_le_bytes(random)));
+        let (dir, outside) = (base.join("root"), base.join("outside"));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let (dir, outside) = (dir.canonicalize().unwrap(), outside.canonicalize().unwrap());
+        let db = base.join("catalog.db");
+        let conn = db::connect(&db).unwrap();
+        for name in ["a.stl", "b.stl"] {
+            std::fs::write(dir.join(name), b"same").unwrap();
+            let id = db::test_insert_minimal_file(&conn, dir.join(name).to_str().unwrap(), None).unwrap();
+            conn.execute("UPDATE files SET content_hash='h1' WHERE id=?1", [id]).unwrap();
+        }
+        db::test_insert_minimal_file(&conn, dir.join("gone.stl").to_str().unwrap(), None).unwrap();
+        std::fs::write(outside.join("o.stl"), b"x").unwrap();
+        let o = db::test_insert_minimal_file(&conn, outside.join("o.stl").to_str().unwrap(), None).unwrap();
+        conn.execute("UPDATE files SET content_hash='h2' WHERE id=?1", [o]).unwrap();
+        let o2 = db::test_insert_minimal_file(&conn, outside.join("missing.stl").to_str().unwrap(), None).unwrap();
+        conn.execute("UPDATE files SET content_hash='h2' WHERE id=?1", [o2]).unwrap();
+        Issues { dir, db }
+    }
+    async fn scan(i: &Issues, gate: Arc<GeometryGate>) -> Response {
+        invoke(i.db.clone(), vec![i.dir.clone()], "scan_catalog_issues".into(), json!({}), gate).await
+    }
+    async fn json_body(r: Response) -> Value {
+        serde_json::from_slice(&body(r).await).unwrap()
+    }
+    fn names(files: &Value) -> Vec<String> {
+        let mut n: Vec<String> = files.as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap().to_owned()).collect();
+        n.sort();
+        n
+    }
+
+    #[tokio::test]
+    async fn issue_scan_has_the_desktop_shape_and_ignores_rows_it_cannot_judge() {
+        let i = issues_catalog();
+        let r = scan(&i, Arc::new(GeometryGate::default())).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        let v = json_body(r).await;
+        let mut keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, ["duplicateGroups", "missingFolders", "orphaned", "roots", "truncated"]);
+        assert_eq!(v["truncated"], false);
+        assert_eq!(v["missingFolders"], json!([]));
+        // Only the model under the root that is really gone; rows outside the roots (even a
+        // missing one) are unclear and never listed or grouped.
+        assert_eq!(v["orphaned"].as_array().unwrap().len(), 1);
+        assert!(v["orphaned"][0]["path"].as_str().unwrap().ends_with("gone.stl"));
+        let groups = v["duplicateGroups"].as_array().unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(names(&groups[0]).len(), 2);
+        assert!(groups[0][0]["id"].is_string(), "full file DTO like the desktop");
+    }
+    #[tokio::test]
+    async fn issue_scan_is_read_only() {
+        let i = issues_catalog();
+        let before = Sha256::digest(std::fs::read(&i.db).unwrap());
+        assert_eq!(scan(&i, Arc::new(GeometryGate::default())).await.status(), StatusCode::OK);
+        assert_eq!(Sha256::digest(std::fs::read(&i.db).unwrap()), before);
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn issue_scan_does_not_call_an_unreadable_directory_missing() {
+        use std::os::unix::fs::PermissionsExt;
+        let i = issues_catalog();
+        std::fs::create_dir(i.dir.join("locked")).unwrap();
+        std::fs::write(i.dir.join("locked/x.stl"), b"x").unwrap();
+        let conn = db::connect(&i.db).unwrap();
+        db::test_insert_minimal_file(&conn, i.dir.join("locked/x.stl").to_str().unwrap(), None).unwrap();
+        drop(conn);
+        std::fs::set_permissions(i.dir.join("locked"), std::fs::Permissions::from_mode(0o000)).unwrap();
+        let v = json_body(scan(&i, Arc::new(GeometryGate::default())).await).await;
+        std::fs::set_permissions(i.dir.join("locked"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(v["orphaned"].as_array().unwrap().iter().all(|f| !f["path"].as_str().unwrap().contains("locked")), "{v}");
+    }
+    #[tokio::test]
+    async fn issue_scan_limits_report_truncated_and_form_no_group_from_unchecked_rows() {
+        let i = issues_catalog();
+        let conn = db::connect(&i.db).unwrap();
+        for n in 0..3 {
+            db::test_insert_minimal_file(&conn, i.dir.join(format!("gone{n}.stl")).to_str().unwrap(), None).unwrap();
+        }
+        drop(conn);
+        let limited = |limits| Arc::new(GeometryGate { issue_limits: limits, ..Default::default() });
+        let v = json_body(scan(&i, limited(catalog_issues::IssueLimits { max_orphaned: 2, ..GeometryGate::default().issue_limits })).await).await;
+        assert_eq!(v["truncated"], true);
+        assert_eq!(v["orphaned"].as_array().unwrap().len(), 2);
+        // A zero time budget checks no row at all: nothing may be listed or grouped.
+        let v = json_body(scan(&i, limited(catalog_issues::IssueLimits { max_duration: std::time::Duration::ZERO, ..GeometryGate::default().issue_limits })).await).await;
+        assert_eq!(v["truncated"], true);
+        assert_eq!((v["orphaned"].as_array().unwrap().len(), v["duplicateGroups"].as_array().unwrap().len()), (0, 0));
+        // Group limit.
+        let conn = db::connect(&i.db).unwrap();
+        for (n, hash) in [("c1", "h9"), ("c2", "h9"), ("d1", "h8"), ("d2", "h8")] {
+            std::fs::write(i.dir.join(format!("{n}.stl")), n).unwrap();
+            let id = db::test_insert_minimal_file(&conn, i.dir.join(format!("{n}.stl")).to_str().unwrap(), None).unwrap();
+            conn.execute("UPDATE files SET content_hash=?2 WHERE id=?1", rusqlite::params![id, hash]).unwrap();
+        }
+        drop(conn);
+        let v = json_body(scan(&i, limited(catalog_issues::IssueLimits { max_groups: 1, ..GeometryGate::default().issue_limits })).await).await;
+        assert_eq!((v["truncated"].clone(), v["duplicateGroups"].as_array().unwrap().len()), (json!(true), 1));
+    }
+    #[tokio::test]
+    async fn issue_scan_limits_default_to_the_specified_values() {
+        let l = GeometryGate::default().issue_limits;
+        assert_eq!((l.max_orphaned, l.max_groups, l.max_duration), (500, 200, std::time::Duration::from_secs(20)));
+    }
+    #[tokio::test]
+    async fn issue_scan_is_single_flight_and_shares_the_report_and_manager_gates() {
+        let i = issues_catalog();
+        let gate = Arc::new(GeometryGate::default());
+        let running = gate.disk_reports.clone().try_acquire_owned().unwrap();
+        let r = scan(&i, gate.clone()).await;
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(r.headers().contains_key("retry-after"));
+        drop(running);
+        let held: Vec<_> = (0..4).map(|_| gate.manager_reads.clone().try_acquire_owned().unwrap()).collect();
+        assert_eq!(scan(&i, gate.clone()).await.status(), StatusCode::SERVICE_UNAVAILABLE);
+        drop(held);
+        assert_eq!(scan(&i, gate.clone()).await.status(), StatusCode::OK);
+        for _ in 0..100 {
+            if gate.disk_reports.available_permits() == 1 && gate.manager_reads.available_permits() == 4 && gate.barrier.snapshot().readers == 0 {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        panic!("permits were never released");
+    }
+    #[tokio::test]
+    async fn issue_scan_runs_on_its_own_thread_and_answers_a_timeout() {
+        let i = issues_catalog();
+        let gate = Arc::new(GeometryGate { report_timeout: std::time::Duration::ZERO, ..Default::default() });
+        let r = scan(&i, gate.clone()).await;
+        assert_eq!(r.status(), StatusCode::GATEWAY_TIMEOUT);
+        assert!(String::from_utf8(body(r).await).unwrap().contains("\"rescanTimeout\""));
+        // The permits stay with the thread until it ends, then come back.
+        for _ in 0..100 {
+            if gate.disk_reports.available_permits() == 1 && gate.barrier.snapshot().readers == 0 {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        panic!("permits were never released");
+    }
+    #[test]
+    fn the_row_guard_refuses_past_the_limit_and_lets_the_limit_itself_through() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE files (id INTEGER PRIMARY KEY, deleted_at TEXT); INSERT INTO files (deleted_at) VALUES (NULL),(NULL),(NULL),('x');").unwrap();
+        let live = "SELECT COUNT(*) FROM files WHERE deleted_at IS NULL";
+        assert_eq!(guard_row_count(&conn, live, 3), Ok(()));
+        assert_eq!(guard_row_count(&conn, live, 2), Err(ReadError::coded_with(ErrorCode::WebLimitReached, [2])));
+        assert_eq!(guard_row_count(&conn, "SELECT COUNT(*) FROM files WHERE deleted_at IS NOT NULL", 1), Ok(()));
+    }
+    #[tokio::test]
+    async fn the_new_read_commands_respect_the_barrier() {
+        let i = issues_catalog();
+        let gate = Arc::new(GeometryGate::default());
+        let window = gate.barrier.enter_draining(std::time::Duration::from_secs(1)).await.unwrap();
+        // Draining lets readers in.
+        assert_eq!(scan(&i, gate.clone()).await.status(), StatusCode::OK);
+        let window = window.enter_exclusive(std::time::Duration::from_secs(1)).await.unwrap();
+        for command in ["scan_catalog_issues", "get_sync_on_start", "get_sync_auto_add", "run_start_sync"] {
+            let r = invoke(i.db.clone(), vec![i.dir.clone()], command.into(), json!({}), gate.clone()).await;
+            assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE, "{command}");
+            assert_eq!(json_body(r).await["message"], "maintenance", "{command}");
+        }
+        window.release();
+        assert_eq!(scan(&i, gate).await.status(), StatusCode::OK);
+    }
+    #[tokio::test]
+    async fn the_new_read_commands_take_no_arguments() {
+        let i = issues_catalog();
+        let gate = Arc::new(GeometryGate::default());
+        for command in ["scan_catalog_issues", "get_sync_on_start", "get_sync_auto_add", "run_start_sync"] {
+            let r = invoke(i.db.clone(), vec![i.dir.clone()], command.into(), json!({"path": "/etc"}), gate.clone()).await;
+            assert_eq!(r.status(), StatusCode::UNPROCESSABLE_ENTITY, "{command}");
+            let r = invoke(i.db.clone(), vec![i.dir.clone()], command.into(), json!([]), gate.clone()).await;
+            assert_eq!(r.status(), StatusCode::BAD_REQUEST, "{command}");
+        }
+    }
+    #[tokio::test]
+    async fn sync_settings_default_to_off_and_read_the_stored_keys() {
+        let i = issues_catalog();
+        let gate = Arc::new(GeometryGate::default());
+        let get = |command: &'static str| {
+            let (db_path, dir, gate) = (i.db.clone(), i.dir.clone(), gate.clone());
+            async move { json_body(invoke(db_path, vec![dir], command.into(), json!({}), gate).await).await }
+        };
+        assert_eq!((get("get_sync_on_start").await, get("get_sync_auto_add").await), (json!(false), json!(false)));
+        let conn = db::connect(&i.db).unwrap();
+        disk_sync_settings::set_flag(&conn, disk_sync_settings::SETTING_AUTO_ADD, true).unwrap();
+        drop(conn);
+        assert_eq!((get("get_sync_on_start").await, get("get_sync_auto_add").await), (json!(false), json!(true)));
+    }
+    #[tokio::test]
+    async fn run_start_sync_only_reports_the_stored_state_and_never_touches_the_catalog() {
+        let gate = Arc::new(GeometryGate::default());
+        // The catalog does not even exist: the answer comes from memory.
+        let missing = std::env::temp_dir().join("server-no-such-catalog.db");
+        let ask = |gate: Arc<GeometryGate>| invoke(missing.clone(), vec![], "run_start_sync".into(), json!({}), gate);
+        let v = json_body(ask(gate.clone()).await).await;
+        assert_eq!(v, json!({"ran":false,"busy":false,"state":"off","newFiles":0,"renamed":0,"missingFiles":0,"missingFolders":0,"duplicates":0,"unreachableRoots":0,"applied":null}));
+        gate.start_sync.set(StartSyncState { busy: true, state: StartSyncPhase::Running, ..Default::default() });
+        let v = json_body(ask(gate.clone()).await).await;
+        assert_eq!((v["busy"].clone(), v["state"].clone(), v["ran"].clone()), (json!(true), json!("running"), json!(false)));
+        gate.start_sync.set(StartSyncState {
+            ran: true,
+            state: StartSyncPhase::Done,
+            new_files: 3,
+            applied: Some(StartSyncApplied { added: 2, renamed: 0, failed: 1 }),
+            ..Default::default()
+        });
+        let v = json_body(ask(gate).await).await;
+        assert_eq!((v["state"].clone(), v["newFiles"].clone(), v["applied"].clone()), (json!("done"), json!(3), json!({"added":2,"renamed":0,"failed":1})));
     }
 
     async fn body(response: Response) -> Vec<u8> {
@@ -972,6 +1528,124 @@ mod tests {
         let text = String::from_utf8(body(r).await).unwrap();
         assert!(text.contains("\"dlPathNotAllowed\""), "{text}");
         assert!(!text.contains(c.dir.to_str().unwrap()), "{text}");
+    }
+    /// A catalog row for a STEP file below the catalog folder.
+    fn step_entry(c: &Catalog) -> String {
+        let path = c.dir.join("teil.step");
+        std::fs::write(&path, b"ISO-10303-21;\nEND-ISO-10303-21;\n").unwrap();
+        let conn = db::connect(&c.db).unwrap();
+        let id = db::test_insert_minimal_file(&conn, path.to_str().unwrap(), None).unwrap();
+        conn.execute("UPDATE files SET file_type='stp' WHERE id=?1", [id]).unwrap();
+        id.to_string()
+    }
+    fn step_gate(parallel: usize) -> Arc<GeometryGate> {
+        // Never started in these tests: the answers come before a process would be spawned,
+        // or from a spawn that fails.
+        let worker = crate::step_worker::StepWorker::with_exe(
+            PathBuf::from("/nonexistent/katalog-server"),
+            crate::step_worker::Limits::default(),
+            parallel,
+        );
+        Arc::new(GeometryGate::with_step(worker))
+    }
+    #[tokio::test]
+    async fn has_step_preview_follows_the_worker() {
+        let c = catalog();
+        let disabled = invoke(c.db.clone(), vec![c.dir.clone()], "has_step_preview".into(), json!({}), Arc::new(GeometryGate::default())).await;
+        assert_eq!(serde_json::from_slice::<Value>(&body(disabled).await).unwrap(), json!(false));
+        let enabled = invoke(c.db.clone(), vec![c.dir.clone()], "has_step_preview".into(), json!({}), step_gate(1)).await;
+        assert_eq!(serde_json::from_slice::<Value>(&body(enabled).await).unwrap(), json!(true));
+    }
+    #[tokio::test]
+    async fn step_geometry_without_a_worker_stays_unsupported() {
+        let c = catalog();
+        let id = step_entry(&c);
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "get_model_geometry".into(), json!({"fileId":id}), Arc::new(GeometryGate::default())).await;
+        assert_eq!(r.status(), 422);
+        let v: Value = serde_json::from_slice(&body(r).await).unwrap();
+        assert_eq!(v["message"], "fileFormatUnsupported");
+        assert_eq!(v["code"], "unsupported");
+    }
+    #[tokio::test]
+    async fn step_geometry_over_the_worker_limit_is_429_with_retry_after() {
+        let c = catalog();
+        let id = step_entry(&c);
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "get_model_geometry".into(), json!({"fileId":id}), step_gate(0)).await;
+        assert_eq!(r.status(), 429);
+        assert_eq!(r.headers()["retry-after"], "5");
+        let v: Value = serde_json::from_slice(&body(r).await).unwrap();
+        assert_eq!(v["message"], "webTooManyRequests");
+    }
+    #[tokio::test]
+    async fn step_previews_do_not_queue_behind_busy_3mf_parsers() {
+        let c = catalog();
+        let id = step_entry(&c);
+        for parallel in [0, 1] {
+            let gate = step_gate(parallel);
+            // Both general parser places are taken by long 3MF work.
+            let _busy = (
+                gate.workers.clone().try_acquire_owned().unwrap(),
+                gate.workers.clone().try_acquire_owned().unwrap(),
+            );
+            let call = invoke(c.db.clone(), vec![c.dir.clone()], "get_model_geometry".into(), json!({"fileId":id}), gate.clone());
+            let r = tokio::time::timeout(std::time::Duration::from_secs(5), call)
+                .await
+                .unwrap_or_else(|_| panic!("STEP request waited for the 3MF gate (parallel {parallel})"));
+            if parallel == 0 {
+                assert_eq!(r.status(), 429);
+                assert_eq!(r.headers()["retry-after"], "5");
+            } else {
+                // The worker cannot start here; what matters is the answer came without waiting.
+                assert_eq!(r.status(), 422);
+            }
+        }
+    }
+    #[tokio::test]
+    async fn step_geometry_checks_the_roots_before_any_worker_and_names_no_path() {
+        let c = catalog();
+        let id = step_entry(&c);
+        let root = c.dir.join("allowed");
+        std::fs::create_dir(&root).unwrap();
+        let r = invoke(c.db.clone(), vec![root], "get_model_geometry".into(), json!({"fileId":id}), step_gate(1)).await;
+        assert_eq!(r.status(), 422);
+        let text = String::from_utf8(body(r).await).unwrap();
+        assert!(text.contains("\"dlPathNotAllowed\""), "{text}");
+        assert!(!text.contains(c.dir.to_str().unwrap()), "{text}");
+    }
+    #[tokio::test]
+    async fn a_worker_that_cannot_start_is_a_coded_answer_not_a_crash() {
+        let c = catalog();
+        let id = step_entry(&c);
+        let r = invoke(c.db.clone(), vec![c.dir.clone()], "get_model_geometry".into(), json!({"fileId":id}), step_gate(1)).await;
+        assert_eq!(r.status(), 422);
+        let v: Value = serde_json::from_slice(&body(r).await).unwrap();
+        assert_eq!(v["message"], "fileFormatUnsupported");
+        assert_eq!(v["code"], "unsupported");
+    }
+    #[tokio::test]
+    async fn a_busy_worker_answers_at_once_with_a_retry_hint_and_frees_up_again() {
+        let c = catalog();
+        let id = step_entry(&c);
+        let gate = step_gate(1);
+        let held = gate.step.try_slot().expect("the only place is free");
+        let busy = invoke(c.db.clone(), vec![c.dir.clone()], "get_model_geometry".into(), json!({"fileId": id}), gate.clone()).await;
+        assert_eq!(busy.status(), 429);
+        assert_eq!(busy.headers()["retry-after"], crate::step_worker::StepWorker::RETRY_AFTER_SECONDS.to_string().as_str());
+        let v: Value = serde_json::from_slice(&body(busy).await).unwrap();
+        assert_eq!(v["message"], "webTooManyRequests");
+        drop(held);
+        let again = invoke(c.db.clone(), vec![c.dir.clone()], "get_model_geometry".into(), json!({"fileId": id}), gate).await;
+        assert_eq!(again.status(), 422, "a freed place is used, not refused");
+    }
+    #[test]
+    fn every_worker_outcome_is_a_wire_code() {
+        use crate::step_worker::WorkerError as W;
+        for e in [W::TooLarge, W::TooComplex, W::NoGeometry, W::Unreadable, W::Crashed, W::Protocol, W::Unavailable, W::NoIsolation, W::Busy] {
+            let r = step_read_error(e.clone());
+            assert!(r.expected, "{e:?}");
+            assert!(is_wire_code(&r.message), "{e:?}: {}", r.message);
+            assert!(r.code.is_some(), "{e:?}");
+        }
     }
     #[tokio::test]
     async fn list_files_by_ids_is_limited_to_500_ids() {

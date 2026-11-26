@@ -45,7 +45,7 @@ interface Props {
   onClose: () => void;
   onOpenInSlicer: () => void;
   onDelete: () => void;
-  onRemove?: () => Promise<void>;
+  onRemove?: (password?: string) => Promise<void>;
   inQueue: boolean | 'mixed';
   onToggleQueue: () => void;
   printed: boolean | 'mixed';

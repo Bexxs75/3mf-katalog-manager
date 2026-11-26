@@ -122,6 +122,17 @@ jobs:
       - name: Smoke test
         run: bash docker-web/scripts/ci-smoke.sh candidate:web-test
 
+      # STEP preview in the hardened container (read-only, no capabilities, Docker's default
+      # seccomp), run as the image's own user (65532) on named volumes.
+      - name: STEP preview smoke test
+        env:
+          SMOKE_DEFAULT_USER: "1"
+        run: bash docker-web/scripts/step-smoke.sh candidate:web-test
+
+      # Budget of the web image: sum of the compressed layers at most 250 MB (decision R7).
+      - name: Image size budget
+        run: bash docker-web/scripts/image-size.sh candidate:web-test 250000000
+
       # Hand the tested image to the publish job unchanged.
       - name: Save the tested image
         if: steps.meta.outputs.publish == 'true'

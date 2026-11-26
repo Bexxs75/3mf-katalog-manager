@@ -55,6 +55,7 @@ type Windows = Mutex<WindowState>;
 
 /// Where the catalog and its files live.
 pub(crate) struct Catalog {
+    pub barrier: crate::barrier::CatalogBarrier,
     pub db_path: PathBuf,
     pub roots: Vec<PathBuf>,
 }
@@ -319,7 +320,7 @@ fn numeric_id(args: &Value) -> Option<i64> {
 /// Session command: mints a link for one file in the catalog.
 pub(crate) async fn mint(
     slicer: &Slicer,
-    Catalog { db_path, roots }: Catalog,
+    Catalog { barrier, db_path, roots }: Catalog,
     rate_key: &str,
     now: u64,
     args: &Value,
@@ -330,7 +331,9 @@ pub(crate) async fn mint(
     if let Err(seconds) = hit(&slicer.mints, rate_key, now, LINKS_PER_MINUTE) {
         return limited(seconds);
     }
+    let catalog_guard = match barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     let found = tokio::task::spawn_blocking(move || {
+        let _catalog_guard = catalog_guard;
         let conn = db::open_read_only(&db_path).ok()?;
         let file = db::get_file(&conn, id).ok()??;
         drop(conn);
@@ -359,7 +362,7 @@ pub(crate) async fn mint(
 /// guesser look the same; only a correctly signed but outdated link learns more.
 pub(crate) async fn download(
     slicer: &Slicer,
-    Catalog { db_path, roots }: Catalog,
+    Catalog { barrier, db_path, roots }: Catalog,
     path: &str,
     method: &Method,
     headers: &HeaderMap,
@@ -404,6 +407,7 @@ pub(crate) async fn download(
     };
     // The permit also covers the blocking open, so a dropped request cannot
     // free a slot while its file is still being opened.
+    let catalog_guard = match barrier.reader() { Ok(g) => g, Err(_) => return crate::barrier::maintenance() };
     let opened = tokio::task::spawn_blocking(move || {
         let conn = db::open_read_only(&db_path).ok()?;
         let file = db::get_file(&conn, id).ok()??;
@@ -413,10 +417,10 @@ pub(crate) async fn download(
         }
         let (handle, meta) = open_admitted(&roots, file.current_path())?;
         let current = revision(&meta, file.content_hash.as_deref());
-        bool::from(current.as_bytes().ct_eq(wanted_revision.as_bytes())).then_some((handle, meta, file.name, permit))
+        bool::from(current.as_bytes().ct_eq(wanted_revision.as_bytes())).then_some((handle, meta, file.name, permit, catalog_guard))
     })
     .await;
-    let Ok(Some((mut file, meta, stored_name, permit))) = opened else {
+    let Ok(Some((mut file, meta, stored_name, permit, catalog_guard))) = opened else {
         audit(now, id_text, 404, 0);
         return plain(404, ErrorCode::WebNotFound);
     };
@@ -448,7 +452,7 @@ pub(crate) async fn download(
         drop((file, permit));
         Body::empty().into_response()
     } else {
-        Body::new(GuardedBody::new(DownloadBody::new(tokio::fs::File::from_std(file), count, permit), slicer.body_limits)).into_response()
+        Body::new(GuardedBody::new(DownloadBody::new(tokio::fs::File::from_std(file), count, permit).with_guard(catalog_guard), slicer.body_limits)).into_response()
     };
     if range.is_some() {
         *response.status_mut() = StatusCode::PARTIAL_CONTENT;

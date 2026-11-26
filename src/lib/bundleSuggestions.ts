@@ -1,7 +1,10 @@
 import { uiSettings } from './uiSettings';
 import type { Bundle, BundleKind, ModelFile } from '../types';
 import { splitFileName } from './fileName';
-import { MAX_BUNDLE_MEMBERS, MIN_BUNDLE_MEMBERS, indexBundles } from './bundles';
+import { MAX_BUNDLE_MEMBERS, indexBundles } from './bundles';
+
+/** A suggestion groups at least two files: a lone file is no pattern. */
+const MIN_SUGGESTED_MEMBERS = 2;
 
 /** Why a group of files is offered as a bundle; the signal decides whether the kind is already known. */
 export type SuggestionReason = 'sameModelId' | 'similarName';
@@ -86,7 +89,7 @@ export function suggestBundles(models: ModelFile[], bundles: Bundle[]): BundleSu
   const free = models.filter(model => !bundled.has(model.id)).sort(byName);
   const taken = new Set<string>();
   const out: BundleSuggestion[] = [];
-  const fits = (count: number) => count >= MIN_BUNDLE_MEMBERS && count <= MAX_BUNDLE_MEMBERS;
+  const fits = (count: number) => count >= MIN_SUGGESTED_MEMBERS && count <= MAX_BUNDLE_MEMBERS;
 
   const byModel = new Map<string, ModelFile[]>();
   for (const file of free) {
@@ -118,7 +121,7 @@ export function suggestBundles(models: ModelFile[], bundles: Bundle[]): BundleSu
   }
   for (const [groupKey, { folderId, files }] of byStem) {
     // Two copies of one name with no number are no "numbered model": only different names count.
-    if (!fits(files.length) || new Set(files.map(file => file.name.toLowerCase())).size < MIN_BUNDLE_MEMBERS) continue;
+    if (!fits(files.length) || new Set(files.map(file => file.name.toLowerCase())).size < MIN_SUGGESTED_MEMBERS) continue;
     out.push({
       key: `stem:${groupKey}`,
       reason: 'similarName',

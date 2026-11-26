@@ -1,0 +1,442 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 2,
+          "Metadata": 2,
+          "ReadDir": 9,
+          "SymlinkMetadata": 8
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [
+            {
+              "id": null,
+              "path": "<ROOT>/models/Alt/a.obj",
+              "relativePath": "Alt/a.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/Alt/sub/b.obj",
+              "relativePath": "Alt/sub/b.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/Basis/q.obj",
+              "relativePath": "Basis/q.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/Bleibt/r.obj",
+              "relativePath": "Bleibt/r.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/M/m.obj",
+              "relativePath": "M/m.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/P/x.obj",
+              "relativePath": "P/x.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/P/y.obj",
+              "relativePath": "P/y.obj",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/Ziel/z.obj",
+              "relativePath": "Ziel/z.obj",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "newFolders": [
+            {
+              "id": null,
+              "path": "<ROOT>/models/Alt",
+              "relativePath": "Alt",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/Alt/sub",
+              "relativePath": "Alt/sub",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/Basis",
+              "relativePath": "Basis",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/Bleibt",
+              "relativePath": "Bleibt",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/M",
+              "relativePath": "M",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/P",
+              "relativePath": "P",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": null,
+              "path": "<ROOT>/models/Ziel",
+              "relativePath": "Ziel",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "renamedFiles": [],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "first scan"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 49,
+          "Metadata": 42,
+          "ReadDir": 9,
+          "SymlinkMetadata": 121
+        },
+        "logs": [],
+        "value": {
+          "failedPaths": [],
+          "fileIds": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8"
+          ],
+          "folderIds": [
+            "2",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "3"
+          ],
+          "knownCopyCount": 0,
+          "notedCopyCount": 0,
+          "removedCount": 0,
+          "renamedCount": 0,
+          "renamedIds": []
+        }
+      }
+    },
+    "step": "take over everything"
+  },
+  {
+    "result": {
+      "ok": {
+        "files": [
+          "1|a.obj|<ROOT>/models/Alt/a.obj|2|0|-",
+          "2|b.obj|<ROOT>/models/Alt/sub/b.obj|3|0|-",
+          "3|q.obj|<ROOT>/models/Basis/q.obj|4|0|-",
+          "4|r.obj|<ROOT>/models/Bleibt/r.obj|5|0|-",
+          "5|m.obj|<ROOT>/models/M/m.obj|6|0|-",
+          "6|x.obj|<ROOT>/models/P/x.obj|7|0|-",
+          "7|y.obj|<ROOT>/models/P/y.obj|7|0|-",
+          "8|z.obj|<ROOT>/models/Ziel/z.obj|8|0|-"
+        ],
+        "folders": [
+          "1|models|-|<ROOT>/models",
+          "2|Alt|1|<ROOT>/models/Alt",
+          "3|sub|2|<ROOT>/models/Alt/sub",
+          "4|Basis|1|<ROOT>/models/Basis",
+          "5|Bleibt|1|<ROOT>/models/Bleibt",
+          "6|M|1|<ROOT>/models/M",
+          "7|P|1|<ROOT>/models/P",
+          "8|Ziel|1|<ROOT>/models/Ziel"
+        ],
+        "knownCopies": []
+      }
+    },
+    "step": "before: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 9,
+          "Metadata": 29,
+          "ReadDir": 11,
+          "SymlinkMetadata": 54
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [],
+          "newFiles": [],
+          "newFolders": [],
+          "renamedFiles": [
+            {
+              "id": "3",
+              "newPath": "<ROOT>/models/Basis2/q.obj",
+              "newRelativePath": "Basis2/q.obj",
+              "oldPath": "<ROOT>/models/Basis/q.obj",
+              "oldRelativePath": "Basis/q.obj",
+              "oldRoot": "<ROOT>/models",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": "4",
+              "newPath": "<ROOT>/models/Bleibt2/r.obj",
+              "newRelativePath": "Bleibt2/r.obj",
+              "oldPath": "<ROOT>/models/Bleibt/r.obj",
+              "oldRelativePath": "Bleibt/r.obj",
+              "oldRoot": "<ROOT>/models",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": "1",
+              "newPath": "<ROOT>/models/Neu/a.obj",
+              "newRelativePath": "Neu/a.obj",
+              "oldPath": "<ROOT>/models/Alt/a.obj",
+              "oldRelativePath": "Alt/a.obj",
+              "oldRoot": "<ROOT>/models",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": "2",
+              "newPath": "<ROOT>/models/Neu/sub/b.obj",
+              "newRelativePath": "Neu/sub/b.obj",
+              "oldPath": "<ROOT>/models/Alt/sub/b.obj",
+              "oldRelativePath": "Alt/sub/b.obj",
+              "oldRoot": "<ROOT>/models",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": "6",
+              "newPath": "<ROOT>/models/Q/x.obj",
+              "newRelativePath": "Q/x.obj",
+              "oldPath": "<ROOT>/models/P/x.obj",
+              "oldRelativePath": "P/x.obj",
+              "oldRoot": "<ROOT>/models",
+              "root": "<ROOT>/models"
+            },
+            {
+              "id": "5",
+              "newPath": "<ROOT>/models/Ziel/M/m.obj",
+              "newRelativePath": "Ziel/M/m.obj",
+              "oldPath": "<ROOT>/models/M/m.obj",
+              "oldRelativePath": "M/m.obj",
+              "oldRoot": "<ROOT>/models",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "renames found"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 47,
+          "Metadata": 79,
+          "ReadDir": 11,
+          "SymlinkMetadata": 135
+        },
+        "logs": [
+          "INFO cmd: catalogRootProtected"
+        ],
+        "value": {
+          "failedPaths": [],
+          "fileIds": [],
+          "folderIds": [
+            "9",
+            "10",
+            "11"
+          ],
+          "knownCopyCount": 0,
+          "notedCopyCount": 0,
+          "removedCount": 0,
+          "renamedCount": 6,
+          "renamedIds": [
+            "3",
+            "4",
+            "1",
+            "2",
+            "6",
+            "5"
+          ]
+        }
+      }
+    },
+    "step": "take over the renames"
+  },
+  {
+    "result": {
+      "ok": {
+        "files": [
+          "1|a.obj|<ROOT>/models/Neu/a.obj|2|0|-",
+          "2|b.obj|<ROOT>/models/Neu/sub/b.obj|3|0|-",
+          "3|q.obj|<ROOT>/models/Basis2/q.obj|9|0|-",
+          "4|r.obj|<ROOT>/models/Bleibt2/r.obj|10|0|-",
+          "5|m.obj|<ROOT>/models/Ziel/M/m.obj|6|0|-",
+          "6|x.obj|<ROOT>/models/Q/x.obj|11|0|-",
+          "7|y.obj|<ROOT>/models/P/y.obj|7|0|-",
+          "8|z.obj|<ROOT>/models/Ziel/z.obj|8|0|-"
+        ],
+        "folders": [
+          "1|models|-|<ROOT>/models",
+          "2|Neu|1|<ROOT>/models/Neu",
+          "3|sub|2|<ROOT>/models/Neu/sub",
+          "4|Basis|1|<ROOT>/models/Basis",
+          "5|Bleibt|1|<ROOT>/models/Bleibt",
+          "6|M|8|<ROOT>/models/Ziel/M",
+          "7|P|1|<ROOT>/models/P",
+          "8|Ziel|1|<ROOT>/models/Ziel",
+          "9|Basis2|1|<ROOT>/models/Basis2",
+          "10|Bleibt2|1|<ROOT>/models/Bleibt2",
+          "11|Q|1|<ROOT>/models/Q"
+        ],
+        "knownCopies": []
+      }
+    },
+    "step": "after apply: state"
+  },
+  {
+    "result": {
+      "ok": {
+        "fsCalls": {
+          "Canonicalize": 10,
+          "Metadata": 20,
+          "ReadDir": 11,
+          "SymlinkMetadata": 65
+        },
+        "logs": [],
+        "value": {
+          "duplicateFiles": [],
+          "knownCopyCount": 0,
+          "missingFiles": [],
+          "missingFolders": [
+            {
+              "id": "4",
+              "modelCount": 0,
+              "path": "<ROOT>/models/Basis",
+              "relativePath": "Basis",
+              "root": "<ROOT>/models"
+            }
+          ],
+          "newFiles": [],
+          "newFolders": [],
+          "renamedFiles": [],
+          "skippedPaths": [],
+          "trashBlockedCount": 0,
+          "unreachableRoots": []
+        }
+      }
+    },
+    "step": "scan after apply"
+  }
+]
+
+== tables ==
+[folders] 11 row(s)
+  id=1 | name=models | parent_id=NULL | path=<ROOT>/models
+  id=2 | name=Neu | parent_id=1 | path=<ROOT>/models/Neu
+  id=3 | name=sub | parent_id=2 | path=<ROOT>/models/Neu/sub
+  id=4 | name=Basis | parent_id=1 | path=<ROOT>/models/Basis
+  id=5 | name=Bleibt | parent_id=1 | path=<ROOT>/models/Bleibt
+  id=6 | name=M | parent_id=8 | path=<ROOT>/models/Ziel/M
+  id=7 | name=P | parent_id=1 | path=<ROOT>/models/P
+  id=8 | name=Ziel | parent_id=1 | path=<ROOT>/models/Ziel
+  id=9 | name=Basis2 | parent_id=1 | path=<ROOT>/models/Basis2
+  id=10 | name=Bleibt2 | parent_id=1 | path=<ROOT>/models/Bleibt2
+  id=11 | name=Q | parent_id=1 | path=<ROOT>/models/Q
+[files] 8 row(s)
+  id=1 | name=a.obj | path=<ROOT>/models/Neu/a.obj | file_type=obj | folder_id=2 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=32 | dimension_x_mm=1 | dimension_y_mm=0 | dimension_z_mm=1 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=697b00ab13410c52a542d2e9c63711fcc04e9cbf6c0d3439a9b43cc812e6e713 | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=b.obj | path=<ROOT>/models/Neu/sub/b.obj | file_type=obj | folder_id=3 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=32 | dimension_x_mm=2 | dimension_y_mm=0 | dimension_z_mm=2 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=69244b0e9ea7fe99d8845a10adc8e413b96606635216764bf42953a533f951b9 | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=3 | name=q.obj | path=<ROOT>/models/Basis2/q.obj | file_type=obj | folder_id=9 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=32 | dimension_x_mm=7 | dimension_y_mm=0 | dimension_z_mm=7 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=8893fddd25019411f8a5ce38f60c4716be917ffe4daf4d309d0435022361e183 | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=4 | name=r.obj | path=<ROOT>/models/Bleibt2/r.obj | file_type=obj | folder_id=10 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=32 | dimension_x_mm=8 | dimension_y_mm=0 | dimension_z_mm=8 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=156f1da5ac0b0fda719cad2467f7036f69c2654649ab8b420087a88c689dbe12 | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=5 | name=m.obj | path=<ROOT>/models/Ziel/M/m.obj | file_type=obj | folder_id=6 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=32 | dimension_x_mm=5 | dimension_y_mm=0 | dimension_z_mm=5 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=1405d8b278bdf6859bd019c277c1b1bc6632ba708afc5a0d9e2449a4f5b3bf50 | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=6 | name=x.obj | path=<ROOT>/models/Q/x.obj | file_type=obj | folder_id=11 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=32 | dimension_x_mm=3 | dimension_y_mm=0 | dimension_z_mm=3 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=ccf1a8093b4b63e4433ee7515661bc47bf360331b8b5c53c2f16cef96acd08db | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=7 | name=y.obj | path=<ROOT>/models/P/y.obj | file_type=obj | folder_id=7 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=32 | dimension_x_mm=4 | dimension_y_mm=0 | dimension_z_mm=4 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=e6f4096be72a59aa75797db4cd785d7896574ecf7820990b0e8e0d877cb2b906 | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=8 | name=z.obj | path=<ROOT>/models/Ziel/z.obj | file_type=obj | folder_id=8 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=32 | dimension_x_mm=6 | dimension_y_mm=0 | dimension_z_mm=6 | volume_cm3=0 | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=<TS> | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=ea8a6235d9d1a4cc06eef332a8c7ccaeea60d84cc7b9f0292046b1eca7b5644a | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 0 row(s)
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 1 row(s)
+  id=1 | name=miniatur | color_hue=52
+[file_tags] 8 row(s)
+  file_id=1 | tag_id=1
+  file_id=2 | tag_id=1
+  file_id=3 | tag_id=1
+  file_id=4 | tag_id=1
+  file_id=5 | tag_id=1
+  file_id=6 | tag_id=1
+  file_id=7 | tag_id=1
+  file_id=8 | tag_id=1
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+models/
+models/Basis2/
+models/Basis2/q.obj (32 bytes)
+models/Bleibt/
+models/Bleibt2/
+models/Bleibt2/r.obj (32 bytes)
+models/Neu/
+models/Neu/a.obj (32 bytes)
+models/Neu/sub/
+models/Neu/sub/b.obj (32 bytes)
+models/P/
+models/P/y.obj (32 bytes)
+models/Q/
+models/Q/x.obj (32 bytes)
+models/Ziel/
+models/Ziel/M/
+models/Ziel/M/m.obj (32 bytes)
+models/Ziel/z.obj (32 bytes)

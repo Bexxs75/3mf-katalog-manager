@@ -271,6 +271,7 @@ pub fn read_model_file(path: &Path, display_name: Option<&str>) -> Result<NewFil
         materials: &materials,
     });
 
+    let source = crate::threemf::source::detect_source(&metadata);
     Ok(NewFile {
         name: file_name,
         path: path.to_string_lossy().to_string(),
@@ -295,9 +296,9 @@ pub fn read_model_file(path: &Path, display_name: Option<&str>) -> Result<NewFil
         content_hash: None,
         render_snapshot_png: None,
         custom_image_png: None,
-        source_url: None,
+        source_url: crate::threemf::source::derive_source_url(&source),
         license: None,
-        source: crate::threemf::source::detect_source(&metadata),
+        source,
         queue_position: None,
         favorite: false,
         plate_count,
@@ -507,6 +508,7 @@ pub fn read_web_model(mut file: std::fs::File, path: &Path, name: &str, limits: 
         materials: &materials,
     });
 
+    let source = crate::threemf::source::detect_source(&metadata);
     Ok(NewFile {
         name: file_name,
         path: path.to_string_lossy().to_string(),
@@ -531,9 +533,9 @@ pub fn read_web_model(mut file: std::fs::File, path: &Path, name: &str, limits: 
         content_hash: Some(hash),
         render_snapshot_png: None,
         custom_image_png: None,
-        source_url: None,
+        source_url: crate::threemf::source::derive_source_url(&source),
         license: None,
-        source: crate::threemf::source::detect_source(&metadata),
+        source,
         queue_position: None,
         favorite: false,
         plate_count,

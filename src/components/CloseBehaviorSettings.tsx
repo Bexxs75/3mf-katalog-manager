@@ -45,7 +45,7 @@ export function CloseBehaviorSettings() {
   ];
   return <>
     <SettingLoadStatus keptValue state={loadState} error={loadError} onReload={() => void reload()} />
-    <SettingRow id="close" value={state.action} label={t('closeActionTitle')} onReset={() => choose(SETTING_DEFAULTS.close)} disabled={loadState !== 'ready' || busy}>
+    <SettingRow id="close" value={state.action} label={t('closeActionTitle')} onReset={() => choose(SETTING_DEFAULTS.close)} disabled={loadState !== 'ready' || busy} keywords="Tray System Tray">
       <fieldset disabled={loadState !== 'ready'} aria-busy={busy} className={busy ? 'opacity-60' : undefined} aria-describedby="close-action-help">
       <legend className="text-[length:var(--font-size-body)] font-semibold">{t('closeActionTitle')}</legend>
       {options.map(option => <label key={option.value} className="flex items-start gap-2 mt-1">

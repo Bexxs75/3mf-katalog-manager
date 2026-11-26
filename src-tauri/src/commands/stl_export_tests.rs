@@ -27,17 +27,17 @@ fn a_3mf_is_converted_whole_or_by_plate() {
     let source = fixture("creality-3plates.3mf");
 
     let all = dir.join("all.stl");
-    assert_eq!(write_stl_export(&source, &StlExportScope::All, &all).unwrap(), mesh_triangles(None));
+    assert_eq!(write_stl_export(&source, &StlExportScope::All, &all, StlFormat::Binary).unwrap(), mesh_triangles(None));
     assert_eq!(triangles_in(&all), mesh_triangles(None));
 
     let plate = dir.join("plate2.stl");
-    assert_eq!(write_stl_export(&source, &StlExportScope::Plate { number: 2 }, &plate).unwrap(), mesh_triangles(Some(2)));
+    assert_eq!(write_stl_export(&source, &StlExportScope::Plate { number: 2 }, &plate, StlFormat::Binary).unwrap(), mesh_triangles(Some(2)));
     assert_eq!(triangles_in(&plate), mesh_triangles(Some(2)));
     assert!(mesh_triangles(Some(2)) < mesh_triangles(None));
 
     let parts = dir.join("part0.stl");
     let first = katalog_core::read::load_render_meshes(&source).unwrap()[0].indices.len() as u64;
-    assert_eq!(write_stl_export(&source, &StlExportScope::Parts { indices: vec![0] }, &parts).unwrap(), first);
+    assert_eq!(write_stl_export(&source, &StlExportScope::Parts { indices: vec![0] }, &parts, StlFormat::Binary).unwrap(), first);
     // Only the three files, no temp file left behind.
     assert_eq!(names(&dir), vec!["all.stl", "part0.stl", "plate2.stl"]);
 }
@@ -47,7 +47,7 @@ fn an_existing_target_is_never_overwritten() {
     let dir = unique_test_dir("stl_export_exists");
     let target = dir.join("taken.stl");
     std::fs::write(&target, b"do not touch").unwrap();
-    let error = write_stl_export(&fixture("creality-3plates.3mf"), &StlExportScope::All, &target).unwrap_err();
+    let error = write_stl_export(&fixture("creality-3plates.3mf"), &StlExportScope::All, &target, StlFormat::Binary).unwrap_err();
     assert!(error.is(ErrorCode::StlTargetExists, &["taken.stl"]), "{error:?}");
     assert_eq!(std::fs::read(&target).unwrap(), b"do not touch");
     assert_eq!(names(&dir), vec!["taken.stl"]);
@@ -59,7 +59,7 @@ fn the_source_file_is_never_the_target() {
     let source = dir.join("copy.3mf");
     std::fs::copy(fixture("creality-3plates.3mf"), &source).unwrap();
     let before = std::fs::read(&source).unwrap();
-    let error = write_stl_export(&source, &StlExportScope::All, &source).unwrap_err();
+    let error = write_stl_export(&source, &StlExportScope::All, &source, StlFormat::Binary).unwrap_err();
     assert!(error.is(ErrorCode::StlTargetIsSource, &[]), "{error:?}");
     assert_eq!(std::fs::read(&source).unwrap(), before);
 }
@@ -70,18 +70,18 @@ fn bad_selections_and_sources_give_registered_codes_and_create_no_file() {
     let source = fixture("creality-3plates.3mf");
     let target = dir.join("out.stl");
 
-    let empty = write_stl_export(&source, &StlExportScope::Plate { number: 9 }, &target).unwrap_err();
+    let empty = write_stl_export(&source, &StlExportScope::Plate { number: 9 }, &target, StlFormat::Binary).unwrap_err();
     assert!(empty.is(ErrorCode::StlNothingToExport, &[]), "{empty:?}");
-    let range = write_stl_export(&source, &StlExportScope::Parts { indices: vec![999] }, &target).unwrap_err();
+    let range = write_stl_export(&source, &StlExportScope::Parts { indices: vec![999] }, &target, StlFormat::Binary).unwrap_err();
     assert!(range.is(ErrorCode::ReqInvalidArguments, &[]), "{range:?}");
 
     let missing = dir.join("gone.3mf");
-    let gone = write_stl_export(&missing, &StlExportScope::All, &target).unwrap_err();
+    let gone = write_stl_export(&missing, &StlExportScope::All, &target, StlFormat::Binary).unwrap_err();
     assert!(gone.is(ErrorCode::FileMissingOnDisk, &[missing.to_str().unwrap()]), "{gone:?}");
 
     let broken = dir.join("broken.3mf");
     std::fs::write(&broken, b"not a zip").unwrap();
-    let unreadable = write_stl_export(&broken, &StlExportScope::All, &target).unwrap_err();
+    let unreadable = write_stl_export(&broken, &StlExportScope::All, &target, StlFormat::Binary).unwrap_err();
     assert!(unreadable.is(ErrorCode::StlSourceUnreadable, &[]), "{unreadable:?}");
 
     assert_eq!(names(&dir), vec!["broken.3mf"]);
@@ -91,7 +91,7 @@ fn bad_selections_and_sources_give_registered_codes_and_create_no_file() {
 #[test]
 fn step_without_the_preview_build_is_reported_not_written() {
     let dir = unique_test_dir("stl_export_step");
-    let error = write_stl_export(&fixture("wuerfel-10mm.step"), &StlExportScope::All, &dir.join("cube.stl")).unwrap_err();
+    let error = write_stl_export(&fixture("wuerfel-10mm.step"), &StlExportScope::All, &dir.join("cube.stl"), StlFormat::Binary).unwrap_err();
     assert!(error.is(ErrorCode::StlStepUnavailable, &[]), "{error:?}");
     assert!(names(&dir).is_empty());
 }
@@ -101,7 +101,7 @@ fn step_without_the_preview_build_is_reported_not_written() {
 fn a_step_cube_becomes_twelve_triangles() {
     let dir = unique_test_dir("stl_export_step");
     let target = dir.join("cube.stl");
-    assert_eq!(write_stl_export(&fixture("wuerfel-10mm.step"), &StlExportScope::All, &target).unwrap(), 12);
+    assert_eq!(write_stl_export(&fixture("wuerfel-10mm.step"), &StlExportScope::All, &target, StlFormat::Binary).unwrap(), 12);
     assert_eq!(triangles_in(&target), 12);
 }
 
@@ -173,7 +173,7 @@ fn part_files_are_numbered_by_list_position_and_padded_to_the_count() {
 fn each_part_is_written_to_its_own_file_and_empty_parts_are_skipped() {
     let dir = unique_test_dir("stl_each_part");
     let meshes = vec![triangle_mesh(2), RenderMesh::default(), triangle_mesh(5)];
-    let (files, triangles) = write_each_part(&meshes, Path::new("/nowhere/Baugruppe.step"), &dir).unwrap();
+    let (files, triangles) = write_each_part(&meshes, Path::new("/nowhere/Baugruppe.step"), &dir, StlFormat::Binary).unwrap();
     assert_eq!((files, triangles), (2, 7));
     // The number is the position in the parts list: part 2 is empty, so there is no Teil2.
     assert_eq!(names(&dir), vec!["Baugruppe_Teil1.stl", "Baugruppe_Teil3.stl"]);
@@ -186,7 +186,7 @@ fn each_part_writes_nothing_when_one_target_already_exists() {
     let dir = unique_test_dir("stl_each_part_exists");
     std::fs::write(dir.join("Teile_Teil2.stl"), b"do not touch").unwrap();
     let meshes = vec![triangle_mesh(1), triangle_mesh(1)];
-    let error = write_each_part(&meshes, Path::new("/nowhere/Teile.step"), &dir).unwrap_err();
+    let error = write_each_part(&meshes, Path::new("/nowhere/Teile.step"), &dir, StlFormat::Binary).unwrap_err();
     assert!(error.is(ErrorCode::StlTargetExists, &["Teile_Teil2.stl"]), "{error:?}");
     assert_eq!(names(&dir), vec!["Teile_Teil2.stl"]);
     assert_eq!(std::fs::read(dir.join("Teile_Teil2.stl")).unwrap(), b"do not touch");
@@ -195,14 +195,14 @@ fn each_part_writes_nothing_when_one_target_already_exists() {
 #[test]
 fn each_part_without_any_triangles_is_nothing_to_export() {
     let dir = unique_test_dir("stl_each_part_empty");
-    let error = write_each_part(&[RenderMesh::default()], Path::new("/nowhere/x.step"), &dir).unwrap_err();
+    let error = write_each_part(&[RenderMesh::default()], Path::new("/nowhere/x.step"), &dir, StlFormat::Binary).unwrap_err();
     assert!(error.is(ErrorCode::StlNothingToExport, &[]), "{error:?}");
 }
 
 #[test]
 fn a_single_target_write_refuses_the_each_part_scope() {
     let dir = unique_test_dir("stl_each_part_single");
-    let error = write_stl_export(&fixture("creality-3plates.3mf"), &StlExportScope::EachPart, &dir.join("x.stl")).unwrap_err();
+    let error = write_stl_export(&fixture("creality-3plates.3mf"), &StlExportScope::EachPart, &dir.join("x.stl"), StlFormat::Binary).unwrap_err();
     assert!(error.is(ErrorCode::ReqInvalidArguments, &[]), "{error:?}");
 }
 
@@ -210,4 +210,35 @@ fn a_single_target_write_refuses_the_each_part_scope() {
 fn the_each_part_scope_comes_from_the_interface_as_a_plain_kind() {
     let scope: StlExportScope = serde_json::from_str(r#"{"kind":"eachPart"}"#).unwrap();
     assert_eq!(scope, StlExportScope::EachPart);
+}
+
+#[test]
+fn ascii_export_writes_readable_text_for_all_plate_and_each_part_paths() {
+    let dir = unique_test_dir("stl_export_ascii");
+    let source = fixture("creality-3plates.3mf");
+    let all = dir.join("all.stl");
+    assert_eq!(write_stl_export(&source, &StlExportScope::All, &all, StlFormat::Ascii).unwrap(), mesh_triangles(None));
+    let text = std::fs::read_to_string(&all).unwrap();
+    assert!(text.starts_with("solid "));
+    assert_eq!(text.lines().filter(|l| l.trim_start().starts_with("facet normal")).count() as u64, mesh_triangles(None));
+    let plate = dir.join("plate2.stl");
+    assert_eq!(write_stl_export(&source, &StlExportScope::Plate { number: 2 }, &plate, StlFormat::Ascii).unwrap(), mesh_triangles(Some(2)));
+    // A taken name is still refused and nothing is left behind.
+    let error = write_stl_export(&source, &StlExportScope::All, &all, StlFormat::Ascii).unwrap_err();
+    assert!(error.is(ErrorCode::StlTargetExists, &["all.stl"]), "{error:?}");
+    assert_eq!(names(&dir), vec!["all.stl", "plate2.stl"]);
+
+    let parts_dir = unique_test_dir("stl_each_part_ascii");
+    let meshes = vec![triangle_mesh(2), RenderMesh::default(), triangle_mesh(5)];
+    assert_eq!(write_each_part(&meshes, Path::new("/nowhere/A.step"), &parts_dir, StlFormat::Ascii).unwrap(), (2, 7));
+    // Same names and extension as binary.
+    assert_eq!(names(&parts_dir), vec!["A_Teil1.stl", "A_Teil3.stl"]);
+    assert!(std::fs::read_to_string(parts_dir.join("A_Teil3.stl")).unwrap().starts_with("solid "));
+}
+
+#[test]
+fn the_format_comes_from_the_interface_as_a_plain_word() {
+    assert_eq!(serde_json::from_str::<StlFormat>(r#""ascii""#).unwrap(), StlFormat::Ascii);
+    assert_eq!(serde_json::from_str::<StlFormat>(r#""binary""#).unwrap(), StlFormat::Binary);
+    assert!(serde_json::from_str::<StlFormat>(r#""text""#).is_err());
 }

@@ -1,14 +1,88 @@
 use std::{
     net::{IpAddr, Ipv6Addr, SocketAddr},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 // Betrieb: Cookies (katalog_session) sind nicht nach Port getrennt. Andere
 // HTTP-Dienste auf demselben Host erhalten sie; eigenen Host-/Domainnamen nutzen.
-// Das Bootstrap-Zufallspasswort bleibt dauerhaft im Log (docker logs) und sollte
-// nach dem ersten Anmelden geändert werden. set-password liest sichtbar im
+// Das Bootstrap-Zufallspasswort steht nicht im Log, sondern in web-initial-password.txt
+// (0600) neben der Passwortdatei und sollte nach dem ersten Anmelden geändert werden;
+// die Datei wird dann entfernt. set-password liest sichtbar im
 // Terminal; ein laufender Server übernimmt die Datei erst nach einem Neustart.
 // Ein vertrauenswürdiger Proxy muss X-Forwarded-For anhängen oder überschreiben.
+// Forwarded-Header zählen nur, wenn der direkte Peer in KATALOG_TRUSTED_PROXIES steht.
+
+/// IP addresses and CIDR networks (IPv4 and IPv6) of the reverse proxies whose
+/// forwarded headers are believed. An IPv4-mapped IPv6 address counts as IPv4.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TrustedProxies(Vec<(IpAddr, u8)>);
+
+fn canonical_ip(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map(IpAddr::V4).unwrap_or(ip),
+        v4 => v4,
+    }
+}
+
+impl TrustedProxies {
+    /// Comma-separated `IP` or `IP/prefix`. Any invalid entry, an empty entry, an
+    /// empty list or a `/0` network (would trust the whole internet) is an error.
+    pub fn parse(list: &str) -> Result<Self, String> {
+        let mut nets = Vec::new();
+        for entry in list.split(',') {
+            let entry = entry.trim();
+            let bad = || format!("KATALOG_TRUSTED_PROXIES: ungültiger Eintrag \"{entry}\" (erwartet IP oder IP/Präfix, kommagetrennt)");
+            let (addr, prefix) = match entry.split_once('/') {
+                Some((a, p)) => (a, Some(p)),
+                None => (entry, None),
+            };
+            let ip = canonical_ip(addr.trim().parse::<IpAddr>().map_err(|_| bad())?);
+            let was_mapped = addr.trim().parse::<IpAddr>().is_ok_and(|a| a != ip);
+            let max: u8 = if ip.is_ipv4() { 32 } else { 128 };
+            let prefix = match prefix {
+                None => max,
+                Some(p) if !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()) => {
+                    let p: u8 = p.parse().map_err(|_| bad())?;
+                    // A mapped IPv6 prefix counts from the v6 start; shorten it to the v4 part.
+                    if was_mapped { p.checked_sub(96).ok_or_else(bad)? } else { p }
+                }
+                Some(_) => return Err(bad()),
+            };
+            if prefix == 0 || prefix > max {
+                return Err(format!("KATALOG_TRUSTED_PROXIES: Präfix von \"{entry}\" außerhalb 1..={max}"));
+            }
+            nets.push((ip, prefix));
+        }
+        Ok(Self(nets))
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    /// Entries wider than /24 (IPv4) or /64 (IPv6): a whole network instead of the proxy's own
+    /// address. Anyone who can connect from there controls X-Forwarded-For and so the per-client
+    /// login lock. Returned as text for a start-up warning; the list is still accepted.
+    pub fn broad_entries(&self) -> Vec<String> {
+        self.0
+            .iter()
+            .filter(|(ip, prefix)| *prefix < if ip.is_ipv4() { 24 } else { 64 })
+            .map(|(ip, prefix)| format!("{ip}/{prefix}"))
+            .collect()
+    }
+    pub fn contains(&self, ip: IpAddr) -> bool {
+        let ip = canonical_ip(ip);
+        self.0.iter().any(|(net, prefix)| match (net, ip) {
+            (IpAddr::V4(n), IpAddr::V4(i)) => {
+                let mask = u32::MAX << (32 - u32::from(*prefix));
+                u32::from(*n) & mask == u32::from(i) & mask
+            }
+            (IpAddr::V6(n), IpAddr::V6(i)) => {
+                let mask = u128::MAX << (128 - u32::from(*prefix));
+                u128::from(*n) & mask == u128::from(i) & mask
+            }
+            _ => false,
+        })
+    }
+}
 #[derive(Clone)]
 pub struct UploadConfig {
     pub dir: PathBuf,
@@ -24,10 +98,14 @@ pub struct Config {
     pub db_path: PathBuf,
     pub static_dir: Option<PathBuf>,
     pub roots: Vec<PathBuf>,
+    pub source_roots: Vec<PathBuf>,
+    pub printer_allow: PrinterAllow,
     pub auth_file: PathBuf,
     pub bind: SocketAddr,
     pub allowed_hosts: Option<Vec<String>>,
     pub trust_proxy: bool,
+    /// Direct peers whose forwarded headers are believed; non-empty whenever `trust_proxy` is set.
+    pub trusted_proxies: TrustedProxies,
     pub allow_no_auth: bool,
     pub write: bool,
     pub file_ops: bool,
@@ -108,6 +186,10 @@ impl Config {
             .unwrap_or_else(|| "127.0.0.1:8080".into())
             .parse()
             .map_err(|_| "KATALOG_BIND ist keine gültige IP-Adresse mit Port".to_string())?;
+        // Port 0 = vom System gewählt: der Drucker-Schutz kennt den eigenen Port sonst nicht.
+        if bind.port() == 0 {
+            return Err("KATALOG_BIND braucht einen festen Port (nicht 0)".into());
+        }
         let write = lookup("KATALOG_WRITE").as_deref() == Some("1");
         if write
             && (lookup("KATALOG_ALLOW_NO_AUTH").as_deref() == Some("1")
@@ -129,6 +211,14 @@ impl Config {
                     .into(),
             );
         }
+        let trusted_proxies = if trust_proxy {
+            let list = lookup("KATALOG_TRUSTED_PROXIES").filter(|s| !s.trim().is_empty()).ok_or(
+                "KATALOG_TRUST_PROXY=1 erfordert KATALOG_TRUSTED_PROXIES (IP/CIDR der Proxys, kommagetrennt); ohne diese Liste startet der Server nicht",
+            )?;
+            TrustedProxies::parse(&list)?
+        } else {
+            TrustedProxies::default()
+        };
         let password = lookup("KATALOG_PASSWORD");
         let password_file = lookup("KATALOG_PASSWORD_FILE").map(PathBuf::from);
         if password.is_some() && password_file.is_some() {
@@ -203,7 +293,14 @@ impl Config {
             )?),
             Some(_) => return Err("KATALOG_SLICER_LINKS muss 0 oder 1 sein".into()),
         };
+        let source_roots = lookup("KATALOG_SOURCE_ROOTS")
+            .filter(|v| !v.is_empty())
+            .map(|value| std::env::split_paths(&value).collect())
+            .unwrap_or_default();
+        let printer_allow = PrinterAllow::parse(&lookup("KATALOG_PRINTER_ALLOW").unwrap_or_default())?;
         let mut config = Self {
+            source_roots,
+            printer_allow,
             slicer_links,
             file_ops, file_ops_daily_limit, companion_max_bytes: companion_mb * 1024 * 1024, file_ops_ack, file_roots,
             static_dir,
@@ -213,16 +310,167 @@ impl Config {
             bind,
             allowed_hosts,
             trust_proxy,
+            trusted_proxies,
             allow_no_auth,
             write,
             upload,
             password,
             password_file,
         };
+        validate_password_path(Some(&config.db_path), &config.auth_file)?;
+        validate_source_config(&mut config)?;
         validate_upload_config(&mut config)?;
         validate_fileops_config(&config)?;
         Ok(config)
     }
+}
+
+/// Parsed configuration only; callers must additionally enforce HOME_NETWORK
+/// on every resolved address and pin the checked address when connecting.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PrinterAllow {
+    entries: Vec<PrinterAllowEntry>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PrinterAllowEntry {
+    Host(String),
+    Network(PrinterNetwork),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PrinterNetwork {
+    address: IpAddr,
+    prefix: u8,
+}
+
+impl PrinterNetwork {
+    pub fn address(&self) -> IpAddr {
+        self.address
+    }
+
+    pub fn prefix(&self) -> u8 {
+        self.prefix
+    }
+
+    fn contains(&self, ip: IpAddr) -> bool {
+        match (self.address, ip) {
+            (IpAddr::V4(net), IpAddr::V4(ip)) => {
+                let mask = u32::MAX
+                    .checked_shl(32 - u32::from(self.prefix))
+                    .unwrap_or(0);
+                u32::from(net) & mask == u32::from(ip) & mask
+            }
+            (IpAddr::V6(net), IpAddr::V6(ip)) => {
+                let mask = u128::MAX
+                    .checked_shl(128 - u32::from(self.prefix))
+                    .unwrap_or(0);
+                u128::from(net) & mask == u128::from(ip) & mask
+            }
+            _ => false,
+        }
+    }
+}
+
+impl PrinterAllow {
+    pub fn entries(&self) -> &[PrinterAllowEntry] {
+        &self.entries
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        let invalid = || {
+            "KATALOG_PRINTER_ALLOW expects comma-separated hosts, IPs or CIDRs without ports"
+                .to_owned()
+        };
+        let mut entries = Vec::new();
+        if value.trim().is_empty() {
+            return Ok(Self { entries });
+        }
+        for token in value.split(',').map(str::trim) {
+            let entry = if let Some((address, prefix)) = token.split_once('/') {
+                let address: IpAddr = address.parse().map_err(|_| invalid())?;
+                let max = if address.is_ipv4() { 32 } else { 128 };
+                let prefix = prefix
+                    .parse::<u8>()
+                    .ok()
+                    .filter(|n| {
+                        *n <= max
+                            && !prefix.is_empty()
+                            && prefix.bytes().all(|b| b.is_ascii_digit())
+                    })
+                    .ok_or_else(invalid)?;
+                PrinterAllowEntry::Network(PrinterNetwork { address, prefix })
+            } else if let Ok(address) = token.parse::<IpAddr>() {
+                let prefix = if address.is_ipv4() { 32 } else { 128 };
+                PrinterAllowEntry::Network(PrinterNetwork { address, prefix })
+            } else {
+                let (host, port) = parse_host(token).map_err(|_| invalid())?;
+                if port.is_some()
+                    || token.starts_with('[')
+                    || host.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+                {
+                    return Err(invalid());
+                }
+                PrinterAllowEntry::Host(host.trim_end_matches('.').to_owned())
+            };
+            entries.push(entry);
+        }
+        Ok(Self { entries })
+    }
+
+    /// This is only the allowlist half of the address policy. Metadata endpoints
+    /// remain excluded even under a matching host, broad CIDR or mapped IPv4.
+    pub fn matches(&self, host: &str, ip: IpAddr) -> bool {
+        let normalized = match ip {
+            IpAddr::V6(ip) => ip
+                .to_ipv4_mapped()
+                .map(IpAddr::V4)
+                .unwrap_or(IpAddr::V6(ip)),
+            ip => ip,
+        };
+        if normalized == IpAddr::from([169, 254, 169, 254])
+            || normalized == IpAddr::V6(Ipv6Addr::new(0xfd00, 0xec2, 0, 0, 0, 0, 0, 0x254))
+        {
+            return false;
+        }
+        self.entries.iter().any(|entry| match entry {
+            PrinterAllowEntry::Host(allowed) => {
+                allowed.eq_ignore_ascii_case(host.trim_end_matches('.'))
+            }
+            PrinterAllowEntry::Network(network) => network.contains(ip),
+        })
+    }
+}
+
+fn validate_source_config(config: &mut Config) -> Result<(), String> {
+    if config.source_roots.is_empty() {
+        return Ok(());
+    }
+    if config.source_roots.iter().any(|p| p.as_os_str().is_empty()) {
+        return Err("KATALOG_SOURCE_ROOTS contains an empty root".into());
+    }
+    let parent = |p: &Path| {
+        p.parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."))
+            .to_path_buf()
+    };
+    let mut forbidden = vec![
+        resolved(&parent(&config.auth_file))?,
+        parent(&resolved(&config.auth_file)?),
+        resolved(&parent(&config.db_path))?.join("trash"),
+        parent(&resolved(&config.db_path)?).join("trash"),
+    ];
+    if let Some(upload) = &config.upload {
+        forbidden.push(resolved(&upload.dir)?);
+    }
+    for root in &config.file_roots {
+        forbidden.push(resolved(root)?.join(katalog_core::fsops::TRASH));
+    }
+    config.source_roots =
+        katalog_core::fsops::validate_source_roots(&config.source_roots, &forbidden)
+            .map_err(|e| format!("KATALOG_SOURCE_ROOTS: {e}"))?;
+    Ok(())
 }
 
 /// Like `positive_limit` with a lower bound; the bounds are part of the message.
@@ -392,18 +640,81 @@ pub fn validate_upload_config(config: &mut Config) -> Result<(), String> {
         .map_err(|_| "KATALOG_UPLOAD_DIR ist nicht schreibbar".to_string())
 }
 
-/// Reject the catalog and its SQLite sidecars before any password-file write.
-/// Auth mutations must never replace either durable operation journal, even
-/// in the standalone set-password command without a database configuration.
-pub fn validate_auth_journal_name(path: &std::path::Path) -> Result<(), String> {
-    if path.file_name().is_some_and(|n| n == "web-fsops.json" || n == "web-uploads.json") {
-        return Err("Auth-Datei kollidiert mit einem Serverjournal".into());
+/// Names shared by all durable server journals.
+/// The last name is not a journal but the file with a generated start password
+/// (`password::initial_password_path`); it is reserved the same way so that nothing else
+/// configured can be overwritten or deleted by it.
+pub const RESERVED_JOURNAL_NAMES: [&str; 4] =
+    ["web-fsops.json", "web-uploads.json", "web-restore.json", "web-initial-password.txt"];
+
+pub fn validate_auth_journal_name(path: &Path) -> Result<(), String> {
+    for path in [path.to_path_buf(), resolved(path)?] {
+        if path
+            .file_name()
+            .is_some_and(|n| RESERVED_JOURNAL_NAMES.iter().any(|r| n == *r))
+        {
+            return Err("Auth-Datei kollidiert mit einem Serverjournal".into());
+        }
+        if path
+            .file_name()
+            .is_some_and(|n| n.to_string_lossy().starts_with(".bak-"))
+        {
+            return Err("Auth-Datei kollidiert mit einer Rückfallsicherung".into());
+        }
     }
     Ok(())
 }
 
+/// Called before bootstrap or standalone password writes.
+pub fn validate_password_path(db: Option<&Path>, auth: &Path) -> Result<(), String> {
+    validate_auth_journal_name(auth)?;
+    if let Some(db) = db {
+        validate_auth_path(db, auth)?;
+    } else {
+        for path in [auth.to_path_buf(), resolved(auth)?] {
+            if path.file_name().is_some_and(|name| {
+                [
+                    "catalog.db",
+                    "catalog.db-wal",
+                    "catalog.db-shm",
+                    "catalog.db-journal",
+                    "catalog.db.lock",
+                ]
+                .iter()
+                .any(|reserved| name == *reserved)
+            }) {
+                return Err("KATALOG_AUTH_FILE kollidiert mit einer Katalogdatei".into());
+            }
+        }
+    }
+    checked_journal_path(db, auth, RESERVED_JOURNAL_NAMES[2])?;
+    if let Some(db) = db {
+        // The start password file lies next to the auth file and is replaced or removed by the server.
+        validate_auth_path(db, &crate::password::initial_password_path(auth)).map_err(|_| {
+            "Die Katalogdatei kollidiert mit der Startpasswort-Datei web-initial-password.txt neben KATALOG_AUTH_FILE".to_owned()
+        })?;
+    }
+    Ok(())
+}
+
+/// Reserve the restore journal without creating or reading its contents.
+pub fn restore_journal_path(db: &Path, auth: &Path) -> Result<PathBuf, String> {
+    checked_journal_path(Some(db), auth, RESERVED_JOURNAL_NAMES[2])
+}
+
+fn checked_journal_path(db: Option<&Path>, auth: &Path, name: &str) -> Result<PathBuf, String> {
+    let journal = auth.with_file_name(name);
+    if let Some(db) = db {
+        validate_auth_path(db, &journal)?;
+    }
+    if resolved(&journal)? == resolved(auth)? {
+        return Err("Restore-Journal kollidiert mit Auth-Datei".into());
+    }
+    Ok(journal)
+}
+
 pub(crate) fn validate_fileops_config(config: &Config) -> Result<(), String> {
-    validate_auth_journal_name(&config.auth_file)?;
+    validate_password_path(Some(&config.db_path), &config.auth_file)?;
     if config.file_ops && (!config.write || config.allow_no_auth || config.file_ops_daily_limit == 0 || config.allowed_hosts.as_ref().is_none_or(|h|h.is_empty() || h.iter().any(|v|parse_host(v).is_err()))) {
         return Err("Dateiverwaltung erfordert Schreibmodus, Anmeldung, Hostliste und positive Tagesgrenze".into());
     }
@@ -413,44 +724,56 @@ pub(crate) fn validate_fileops_config(config: &Config) -> Result<(), String> {
     Ok(())
 }
 
-pub fn validate_auth_path(db: &std::path::Path, auth: &std::path::Path) -> Result<(), String> {
-    fn resolved(path: &std::path::Path) -> Result<PathBuf, String> {
-        if let Ok(path) = path.canonicalize() {
-            return Ok(path);
-        }
-        let absolute = if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            std::env::current_dir()
-                .map_err(|_| "Arbeitsverzeichnis nicht lesbar".to_string())?
-                .join(path)
-        };
-        let mut normalized = PathBuf::new();
-        for part in absolute.components() {
-            match part {
-                std::path::Component::ParentDir => {
-                    normalized.pop();
-                }
-                std::path::Component::CurDir => {}
-                other => normalized.push(other.as_os_str()),
-            }
-        }
-        if let (Some(parent), Some(name)) = (normalized.parent(), normalized.file_name()) {
-            if let Ok(parent) = parent.canonicalize() {
-                return Ok(parent.join(name));
-            }
-        }
-        Ok(normalized)
+fn resolved(path: &std::path::Path) -> Result<PathBuf, String> {
+    if let Ok(path) = path.canonicalize() {
+        return Ok(path);
     }
+    if let (Some(parent), Some(name)) = (path.parent(), path.file_name()) {
+        if let Ok(parent) = parent.canonicalize() {
+            return Ok(parent.join(name));
+        }
+    }
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|_| "Arbeitsverzeichnis nicht lesbar".to_string())?
+            .join(path)
+    };
+    let mut normalized = PathBuf::new();
+    for part in absolute.components() {
+        match part {
+            std::path::Component::ParentDir => {
+                normalized.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    if let (Some(parent), Some(name)) = (normalized.parent(), normalized.file_name()) {
+        if let Ok(parent) = parent.canonicalize() {
+            return Ok(parent.join(name));
+        }
+    }
+    Ok(normalized)
+}
+pub fn validate_auth_path(db: &Path, auth: &Path) -> Result<(), String> {
     let auth = resolved(auth)?;
-    for suffix in ["", "-wal", "-shm", "-journal"] {
-        let mut name = db.as_os_str().to_os_string();
-        name.push(suffix);
-        if auth == resolved(std::path::Path::new(&name))? {
-            return Err(
-                "KATALOG_AUTH_FILE darf weder der Katalog noch eine SQLite-Begleitdatei sein"
+    if let Ok(lock) = katalog_core::db::instance_lock::InstanceLock::path_for(db) {
+        if auth == resolved(&lock)? {
+            return Err("KATALOG_AUTH_FILE must not replace the catalog lock file".into());
+        }
+    }
+    for db in [db.to_path_buf(), resolved(db)?] {
+        for suffix in ["", "-wal", "-shm", "-journal", ".lock"] {
+            let mut name = db.as_os_str().to_os_string();
+            name.push(suffix);
+            if auth == resolved(std::path::Path::new(&name))? {
+                return Err(
+                "KATALOG_AUTH_FILE darf weder der Katalog noch eine SQLite-Begleitdatei oder Katalog-Sperrdatei sein"
                     .into(),
             );
+            }
         }
     }
     Ok(())
@@ -626,6 +949,44 @@ mod tests {
         assert!(config(&[("KATALOG_ALLOW_NO_AUTH", "1"), ("KATALOG_TRUST_PROXY", "1")]).is_err());
     }
     #[test]
+    fn trust_proxy_requires_a_valid_trusted_proxy_list() {
+        let base = [("KATALOG_TRUST_PROXY", "1")];
+        let with = |list: &'static str| config(&[base[0], ("KATALOG_TRUSTED_PROXIES", list)]);
+        // Missing, empty or broken lists stop the start; "everything" is not a proxy list.
+        assert!(config(&base).err().unwrap().contains("KATALOG_TRUSTED_PROXIES"));
+        for bad in ["", " ", ",", "10.0.0.1,", "nope", "10.0.0.0/33", "::1/129", "10.0.0.0/", "10.0.0.0/-1", "0.0.0.0/0", "::/0", "10.0.0.0/8/9", "10.0.0.1:80"] {
+            assert!(with(bad).is_err(), "{bad:?} must be rejected");
+        }
+        let c = with("127.0.0.1, 10.0.0.0/8 ,fd00::/8,::1").unwrap();
+        assert!(c.trust_proxy && !c.trusted_proxies.is_empty());
+        // Without TRUST_PROXY nothing changes: no list needed, nothing trusted.
+        let c = config(&[("KATALOG_TRUSTED_PROXIES", "10.0.0.0/8")]).unwrap();
+        assert!(!c.trust_proxy && c.trusted_proxies.is_empty());
+    }
+    #[test]
+    fn broad_trusted_proxy_ranges_are_reported_but_accepted() {
+        let t = TrustedProxies::parse(
+            "172.18.0.5,172.18.0.0/24,10.0.0.0/8,::1,fd00::/64,2001:db8::/32,172.16.0.0/23",
+        )
+        .unwrap();
+        assert_eq!(
+            t.broad_entries(),
+            ["10.0.0.0/8", "2001:db8::/32", "172.16.0.0/23"]
+        );
+        assert!(TrustedProxies::parse("192.0.2.7/32,::1/128")
+            .unwrap()
+            .broad_entries()
+            .is_empty());
+    }
+    #[test]
+    fn trusted_proxy_matching_covers_ipv4_ipv6_and_mapped_addresses() {
+        let t = TrustedProxies::parse("10.0.0.0/8,192.0.2.7,2001:db8::/32,::ffff:198.51.100.0/120").unwrap();
+        let yes = ["10.1.2.3", "192.0.2.7", "2001:db8:ffff::1", "::ffff:10.1.2.3", "198.51.100.9"];
+        let no = ["11.0.0.1", "192.0.2.8", "2001:db9::1", "::1", "198.51.101.9"];
+        for a in yes { assert!(t.contains(a.parse().unwrap()), "{a}"); }
+        for a in no { assert!(!t.contains(a.parse().unwrap()), "{a}"); }
+    }
+    #[test]
     fn defaults_and_bootstrap_inputs() {
         let c = config(&[]).unwrap();
         assert_eq!(c.bind.to_string(), "127.0.0.1:8080");
@@ -677,6 +1038,11 @@ mod tests {
         assert_eq!(c.mode_description(), "Schreibmodus mit Upload");
     }
     #[test]
+    fn bind_port_zero_is_rejected() {
+        let Err(err) = config(&[("KATALOG_BIND", "127.0.0.1:0")]) else { panic!("port 0") };
+        assert!(err.contains("festen Port"), "{err}");
+    }
+    #[test]
     fn non_loopback_bind_without_allowed_hosts_is_rejected() {
         for bind in ["0.0.0.0:8080", "192.168.1.5:8080", "[::]:8080"] {
             let Err(err) = config(&[("KATALOG_BIND", bind)]) else { panic!("{bind}") };
@@ -693,6 +1059,7 @@ mod tests {
         let c = config(&[
             ("KATALOG_BIND", "0.0.0.0:9090"),
             ("KATALOG_TRUST_PROXY", "1"),
+            ("KATALOG_TRUSTED_PROXIES", "172.18.0.0/16"),
             ("KATALOG_ALLOWED_HOSTS", "katalog.example"),
         ])
         .unwrap();
@@ -749,7 +1116,7 @@ mod tests {
     }
     #[test]
     fn password_file_cannot_replace_catalog_or_sidecars() {
-        for suffix in ["", "-wal", "-shm", "-journal"] {
+        for suffix in ["", "-wal", "-shm", "-journal", ".lock"] {
             let path = format!("/nonexistent/catalog.db{suffix}");
             assert!(config(&[("KATALOG_AUTH_FILE", &path)]).is_err());
         }
@@ -781,7 +1148,7 @@ mod upload_journal_tests {
                 "KATALOG_ALLOWED_HOSTS"=>Some("localhost:8080".into()),
                 _=>None,
             });
-            assert!(matches!(result,Err(message) if message.contains("Upload-Journal kollidiert")));
+            assert!(matches!(result,Err(message) if message.contains("kollidiert")));
         }
     }
 }

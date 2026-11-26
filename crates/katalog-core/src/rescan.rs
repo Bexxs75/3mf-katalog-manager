@@ -19,7 +19,7 @@ pub enum RescanError {
     /// The stored path no longer exists (desktop keeps it for the user's message).
     Missing(String),
     Unsupported,
-    /// STEP needs the OCCT preview, which the web server does not ship.
+    /// STEP needs the OCCT reader, and this web server has no working one (or none free).
     StepUnavailable,
     /// The stored path is not below a configured root, or is a link/special file.
     Outside,
@@ -231,11 +231,11 @@ fn update_from(new_file: NewFile) -> ScannedMetadataUpdate {
 /// Identity of the file as it was parsed. The short write step compares it again so a file
 /// replaced or rewritten in between is never stored under stale metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct FileStamp {
-    len: u64,
-    modified: Option<std::time::SystemTime>,
+pub(crate) struct FileStamp {
+    pub(crate) len: u64,
+    pub(crate) modified: Option<std::time::SystemTime>,
     #[cfg(unix)]
-    dev_ino: (u64, u64),
+    pub(crate) dev_ino: (u64, u64),
 }
 
 impl PreparedRescan {
@@ -246,7 +246,7 @@ impl PreparedRescan {
 }
 
 impl FileStamp {
-    fn of(meta: &std::fs::Metadata) -> Self {
+    pub(crate) fn of(meta: &std::fs::Metadata) -> Self {
         #[cfg(unix)]
         use std::os::unix::fs::MetadataExt;
         Self {
@@ -279,6 +279,25 @@ pub fn prepare_web_rescan(
     roots: &[PathBuf],
     limits: WebImportLimits,
 ) -> Result<PreparedRescan> {
+    prepare_web_rescan_with(conn, id, roots, limits, None)
+}
+
+/// Metadata the web server got for a STEP file from its isolated reader:
+/// dimensions, volume and body count, each optional like on the desktop.
+pub type StepMetadata = (Option<[f64; 3]>, Option<f64>, Option<i64>);
+
+/// Reads STEP metadata from an already admitted, opened file. The web server passes a reader
+/// that runs OCCT in a separate process; the callback never sees the path.
+pub type StepReader<'a> = &'a dyn Fn(&std::fs::File) -> Result<StepMetadata>;
+
+/// [`prepare_web_rescan`] with an optional STEP reader. Without one, STEP stays refused.
+pub fn prepare_web_rescan_with(
+    conn: &Connection,
+    id: i64,
+    roots: &[PathBuf],
+    limits: WebImportLimits,
+    step: Option<StepReader<'_>>,
+) -> Result<PreparedRescan> {
     let existing = load(conn, id)?;
     if existing.deleted_at.is_some() {
         return Err(RescanError::NotInCatalog);
@@ -290,6 +309,7 @@ pub fn prepare_web_rescan(
     match extension.as_deref() {
         Some("3mf" | "stl" | "obj" | "gcode" | "bgcode") => {}
         Some(e) if is_resin_extension(e) => {}
+        Some("stp" | "step") if step.is_some() => {}
         // Reading it without OCCT would silently wipe the dimensions of a good record.
         Some("stp" | "step") => return Err(RescanError::StepUnavailable),
         _ => return Err(RescanError::Unsupported),
@@ -299,13 +319,24 @@ pub fn prepare_web_rescan(
         other => other,
     })?;
     let stamp = FileStamp::of(&file.metadata().map_err(|_| RescanError::Outside)?);
-    let new_file = read_web_model(file, &canonical, &existing.name, limits).map_err(|kind| match kind.as_str() {
+    // Read through the same admitted handle before the hash pass consumes it, so the
+    // metadata and the stamp describe the same file.
+    let step_metadata = match step {
+        Some(read) if matches!(extension.as_deref(), Some("stp" | "step")) => Some(read(&file)?),
+        _ => None,
+    };
+    let mut new_file = read_web_model(file, &canonical, &existing.name, limits).map_err(|kind| match kind.as_str() {
         "resource_limit" => RescanError::TooLarge,
         "changed" => RescanError::Changed,
         "read_failed" => RescanError::Failed("read_failed".into()),
         _ => RescanError::Invalid,
     })?;
-    debug_assert!(matches!(new_file.file_type, FileType::ThreeMf | FileType::Stl | FileType::Obj | FileType::Gcode | FileType::Resin));
+    if let Some((dimensions_mm, volume_cm3, object_count)) = step_metadata {
+        new_file.dimensions_mm = dimensions_mm;
+        new_file.volume_cm3 = volume_cm3;
+        new_file.object_count = object_count;
+    }
+    debug_assert!(matches!(new_file.file_type, FileType::ThreeMf | FileType::Stl | FileType::Obj | FileType::Gcode | FileType::Resin | FileType::Stp));
     Ok(PreparedRescan { id, stored_path: existing.path, canonical, stamp, follow_links: false, update: update_from(new_file) })
 }
 

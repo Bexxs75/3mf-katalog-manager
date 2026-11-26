@@ -44,6 +44,7 @@ macro_rules! error_codes {
 }
 
 error_codes! {
+    PrinterAddressNotAllowed => "printerAddressNotAllowed",
     UiSettingsInvalid => "uiSettingsInvalid",
     UiSettingsUnavailable => "uiSettingsUnavailable",
     // Folder names. The wording differs per kind, so each kind has full codes of its
@@ -115,6 +116,7 @@ error_codes! {
     SourceNotAFolder => "sourceNotAFolder",
     SourceFolderUnreadable => "sourceFolderUnreadable",
     SourceFolderMoved => "sourceFolderMoved",
+    SourceRootNotAllowed => "sourceRootNotAllowed",
     SourcePathInvalid => "sourcePathInvalid",
     SourceFolderProtected => "sourceFolderProtected",
     SourceFolderInCatalog => "sourceFolderInCatalog",
@@ -124,8 +126,13 @@ error_codes! {
     SourceFileNotNew => "sourceFileNotNew",
     FolderNotPicked => "folderNotPicked",
     SourceNoCatalogFolder => "sourceNoCatalogFolder",
+    SourceImportSpace => "sourceImportSpace",
+    SourceImportLimit => "sourceImportLimit",
     SourceNoFilesSelected => "sourceNoFilesSelected",
+    // Restored rows still wait for their local content hash; imports would miss duplicates.
+    CatalogHashCheckPending => "catalogHashCheckPending",
     // Restoring a catalog backup.
+    CatalogInUse => "catalogInUse",
     BackupNotZip => "backupNotZip",
     /// params: name of the missing entry.
     BackupMissingEntry => "backupMissingEntry",
@@ -161,6 +168,13 @@ error_codes! {
     WebCommandUnavailable => "webCommandUnavailable",
     /// The write path is busy; the client retries once on its own.
     WebWriteBusy => "webWriteBusy",
+    RestoreBackupInvalid => "restoreBackupInvalid",
+    RestoreFailed => "restoreFailed",
+    RestoreDrainTimeout => "restoreDrainTimeout",
+    RestoreJournalPending => "restoreJournalPending",
+    RestoreUploadsPending => "restoreUploadsPending",
+    RestoreRecoveryFailed => "restoreRecoveryFailed",
+    Maintenance => "maintenance",
     WebServerInternal => "webServerInternal",
     // Web server: arguments of a request.
     ReqInvalidArguments => "reqInvalidArguments",
@@ -229,6 +243,8 @@ error_codes! {
     InvalidSlot => "invalidSlot",
     /// params: the highest number of entries.
     WebLimitReached => "webLimitReached",
+    /// params: the highest total size of all spool images, in megabytes.
+    WebImageQuotaReached => "webImageQuotaReached",
     // Catalog entries written from the web.
     EntryNotFound => "entryNotFound",
     TextEmpty => "textEmpty",
@@ -246,6 +262,8 @@ error_codes! {
     /// params: the limit in bytes.
     FileTooLarge => "fileTooLarge",
     PreviewTooLarge => "previewTooLarge",
+    /// The file holds no mesh to show (for example a sliced package with G-code only).
+    GeometryEmpty => "geometryEmpty",
     /// params: the file extension.
     FileFormatUnsupported => "fileFormatUnsupported",
     SpoolNotFound => "spoolNotFound",

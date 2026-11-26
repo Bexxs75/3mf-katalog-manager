@@ -1,0 +1,72 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": {
+        "count": 0,
+        "id": "2",
+        "missing": false,
+        "moveTarget": true,
+        "name": "child",
+        "parentId": "1",
+        "path": "<ROOT>/base/child"
+      }
+    },
+    "step": "create child"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "folderExists",
+        "params": [
+          "<ROOT>/base/child"
+        ]
+      }
+    },
+    "step": "create child again (exists)"
+  },
+  {
+    "result": {
+      "ok": {
+        "count": 0,
+        "id": "3",
+        "missing": false,
+        "moveTarget": true,
+        "name": "viaparent",
+        "parentId": "1",
+        "path": "<ROOT>/base/viaparent"
+      }
+    },
+    "step": "create without parent id (parent derived)"
+  }
+]
+
+== tables ==
+[folders] 3 row(s)
+  id=1 | name=base | parent_id=NULL | path=<ROOT>/base
+  id=2 | name=child | parent_id=1 | path=<ROOT>/base/child
+  id=3 | name=viaparent | parent_id=1 | path=<ROOT>/base/viaparent
+[files] 0 row(s)
+[companion_files] 0 row(s)
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+base/
+base/child/
+base/viaparent/

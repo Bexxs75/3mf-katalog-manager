@@ -66,6 +66,8 @@ impl Fixture {
     }
     async fn with_forced() -> Self {
         let mut f = Self::with(&[("KATALOG_SLICER_LINKS", "1")], true).await;
+        // Only one app may own the catalog lock; release the first before building the second.
+        f.app = Router::new();
         f.app = Self::build(&f.dir, &[("KATALOG_SLICER_LINKS", "1")], true, f.time.clone(), true).await;
         f
     }
@@ -192,6 +194,10 @@ async fn valid_link_serves_content_ranges_head_and_safe_headers() {
     assert!(h.get("set-cookie").is_none());
     assert_eq!(h["cache-control"], "no-store");
     assert_eq!(h["x-content-type-options"], "nosniff");
+    // The signed /dl/ answer carries the isolation headers too (a slicer app does not enforce them).
+    assert_eq!(h["cross-origin-resource-policy"], "same-origin");
+    assert_eq!(h["cross-origin-opener-policy"], "same-origin");
+    assert!(h["permissions-policy"].to_str().unwrap().contains("geolocation=()"));
     assert_eq!(h["accept-ranges"], "bytes");
     assert_eq!(h["content-length"], DATA.len().to_string());
     assert_eq!(h["content-type"], "application/octet-stream");
@@ -552,13 +558,16 @@ async fn restart_invalidates_links_because_the_key_is_new() {
     let f = Fixture::new().await;
     let s = f.login().await;
     let path = f.link(Some(&s)).await;
+    assert_eq!(f.get(&path, "GET", &[]).await.status(), 200);
+    // A restart replaces the process; the old app must release the catalog lock first.
+    let mut f = f;
+    f.app = Router::new();
     let restarted = Fixture::build(&f.dir, &[("KATALOG_SLICER_LINKS", "1")], true, f.time.clone(), false).await;
     let response = restarted
         .oneshot(Request::builder().uri(&path).header("host", "localhost:8080").body(Body::empty()).unwrap())
         .await
         .unwrap();
     assert_eq!(response.status(), 404);
-    assert_eq!(f.get(&path, "GET", &[]).await.status(), 200);
 }
 
 #[tokio::test]

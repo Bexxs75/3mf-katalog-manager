@@ -236,22 +236,24 @@ mod tests {
 
     #[test]
     fn a_folder_rename_rewrites_companion_paths_below_it_and_nothing_else() {
+        // The rewrite matches the native separator, as the app stores native paths.
+        let n = crate::native_test_path;
         let conn = connect_in_memory().unwrap();
-        let folder = insert_folder(&conn, "/a/Deko").unwrap();
-        let inside = model(&conn, "/a/Deko/x.3mf");
-        let sibling = model(&conn, "/a/Deko2/y.3mf");
-        insert_companion(&conn, inside, "p.png", "/a/Deko/x_extras/p.png", "image", None, "t").unwrap();
-        insert_companion(&conn, sibling, "p.png", "/a/Deko2/y_extras/p.png", "image", None, "t").unwrap();
-        let trashed = insert_companion(&conn, inside, "q.png", "/a/Deko/x_extras/q.png", "image", None, "t").unwrap();
+        let folder = insert_folder(&conn, &n("/a/Deko")).unwrap();
+        let inside = model(&conn, &n("/a/Deko/x.3mf"));
+        let sibling = model(&conn, &n("/a/Deko2/y.3mf"));
+        insert_companion(&conn, inside, "p.png", &n("/a/Deko/x_extras/p.png"), "image", None, "t").unwrap();
+        insert_companion(&conn, sibling, "p.png", &n("/a/Deko2/y_extras/p.png"), "image", None, "t").unwrap();
+        let trashed = insert_companion(&conn, inside, "q.png", &n("/a/Deko/x_extras/q.png"), "image", None, "t").unwrap();
         soft_delete_companion(&conn, trashed, Some("/trash/companion-3-q.png"), "T").unwrap();
 
-        update_paths_under_folder(&conn, folder, "/a/Deko", "/a/Decor").unwrap();
+        update_paths_under_folder(&conn, folder, &n("/a/Deko"), &n("/a/Decor")).unwrap();
 
         let path = |model: i64, name: &str| list_companions(&conn, model).unwrap().into_iter().find(|c| c.name == name).unwrap();
-        assert_eq!(path(inside, "p.png").path, "/a/Decor/x_extras/p.png");
-        assert_eq!(path(sibling, "p.png").path, "/a/Deko2/y_extras/p.png", "a folder with a similar name stays");
+        assert_eq!(path(inside, "p.png").path, n("/a/Decor/x_extras/p.png"));
+        assert_eq!(path(sibling, "p.png").path, n("/a/Deko2/y_extras/p.png"), "a folder with a similar name stays");
         let moved_trashed = path(inside, "q.png");
-        assert_eq!(moved_trashed.path, "/a/Decor/x_extras/q.png", "where a restore will put it");
+        assert_eq!(moved_trashed.path, n("/a/Decor/x_extras/q.png"), "where a restore will put it");
         assert_eq!(moved_trashed.trash_path.as_deref(), Some("/trash/companion-3-q.png"), "the trash file itself is not touched");
     }
 }

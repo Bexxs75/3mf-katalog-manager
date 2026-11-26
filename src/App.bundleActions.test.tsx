@@ -157,13 +157,14 @@ it('does not ask when the bundles are not shown as cards', async () => {
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 });
 
-it('removes a selected member from its bundle and says that the bundle with one left is dissolved', async () => {
+it('removes a selected member from its bundle and says nothing about dissolving while a member is left', async () => {
   localStorage.setItem('3mf-katalog-bundle-collapse', 'off');
   await open();
   fireEvent.click(tick('1'));
   clickBulkMore(de.bundleRemoveFrom);
   await waitFor(() => expect(calls('remove_files_from_bundle')).toEqual([{ fileIds: ['1'] }]));
-  expect(await screen.findByText(/1 Modell aus dem Bündel entfernt\. Die Datei bleibt erhalten\. Ein Bündel mit weniger als 2 verbliebenen Modellen wurde aufgelöst\./)).toBeInTheDocument();
+  expect(await screen.findByText(/1 Modell aus dem Bündel entfernt\. Die Datei bleibt erhalten\./)).toBeInTheDocument();
+  expect(screen.queryByText(/wurde aufgelöst/)).toBeNull();
 });
 
 it('opens the edit dialog for exactly one selected bundle and saves a changed name', async () => {

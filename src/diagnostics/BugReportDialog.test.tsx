@@ -80,6 +80,15 @@ describe('BugReportDialog', () => {
     expect(screen.getByRole('checkbox')).toBeChecked();
   });
 
+  it('selects only the log text on Ctrl+A inside the preview', async () => {
+    renderDialog();
+    fireEvent.click(screen.getByText('Ja, Logdatei anhängen'));
+    const log = await screen.findByRole('region', { name: 'Vorschau des Protokolls' });
+    const notPrevented = fireEvent.keyDown(log, { key: 'a', ctrlKey: true });
+    expect(notPrevented).toBe(false);
+    expect(window.getSelection()?.toString()).toBe('plain');
+  });
+
   it('reloads the preview without file-name replacement when the checkbox is toggled', async () => {
     renderDialog();
     fireEvent.click(screen.getByText('Ja, Logdatei anhängen'));

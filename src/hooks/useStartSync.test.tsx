@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { resetStartSyncSession, useStartSync } from './useStartSync';
+import { resetStartSyncSession, startSyncNotice, useStartSync } from './useStartSync';
 import * as api from '../lib/api/diskSync';
 
 vi.mock('../lib/api/diskSync', () => ({ runStartSync: vi.fn() }));
@@ -53,6 +53,12 @@ it('reloads the lists only when something was taken over, before showing the not
   const plain = setup(true);
   await waitFor(() => expect(plain.result.current.notice).not.toBeNull());
   expect(plain.onApplied).not.toHaveBeenCalled();
+});
+it('keeps what is still open: found minus added minus failed; desktop result without applied is unchanged', () => {
+  expect(startSyncNotice(result({ newFiles: 205, applied: { added: 200, renamed: 0, failed: 0 } }))).toMatchObject({ newFiles: 5, added: { files: 200 } });
+  expect(startSyncNotice(result({ newFiles: 10, applied: { added: 4, renamed: 0, failed: 3 } }))?.newFiles).toBe(3);
+  expect(startSyncNotice(result({ newFiles: 7, applied: { added: 0, renamed: 0, failed: 0 } }))).not.toBeNull();
+  expect(startSyncNotice(result({ newFiles: 3 }))).toMatchObject({ newFiles: 3, added: null });
 });
 it('survives a failing call without a notice', async () => {
   const log = vi.spyOn(console, 'error').mockImplementation(() => {});

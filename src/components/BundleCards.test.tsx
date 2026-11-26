@@ -214,3 +214,33 @@ describe('bundle row in the list', () => {
     expect(screen.getAllByText('war Teil von Bündel „Holder“')).toHaveLength(3);
   });
 });
+
+describe('dragging a bundle card', () => {
+  const drag = (row: HTMLElement) => {
+    fireEvent.mouseDown(row, { clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(document, { clientX: 40, clientY: 40 });
+    fireEvent.mouseUp(document);
+  };
+
+  it('hands the title card and all living members to the drag start in the grid', () => {
+    const onDragFileStart = vi.fn();
+    render(wrap(<ModelGrid {...handlers()} models={models} selectedId={null} selectedForBulk={new Set()} onDragFileStart={onDragFileStart} />, settings()));
+    drag(screen.getByRole('row', { name: 'Bündel Holder, 3 Varianten' }));
+    expect(onDragFileStart).toHaveBeenCalledWith('v1', ['v1', 'v2', 'v3']);
+  });
+
+  it('still starts a single card without member ids afterwards', () => {
+    const onDragFileStart = vi.fn();
+    render(wrap(<ModelGrid {...handlers()} models={models} selectedId={null} selectedForBulk={new Set()} onDragFileStart={onDragFileStart} />, settings()));
+    drag(screen.getByRole('row', { name: 'Bündel Holder, 3 Varianten' }));
+    drag(screen.getByRole('row', { name: 'Solo.stl' }));
+    expect(onDragFileStart).toHaveBeenLastCalledWith('solo');
+  });
+
+  it('does the same in the list', () => {
+    const onDragFileStart = vi.fn();
+    render(wrap(<ModelList {...handlers()} models={models} selectedId={null} selectedForBulk={new Set()} onDragFileStart={onDragFileStart} />, settings()));
+    drag(rowsOf().find(row => row.hasAttribute('data-bundle-id'))!);
+    expect(onDragFileStart).toHaveBeenCalledWith('v1', ['v1', 'v2', 'v3']);
+  });
+});

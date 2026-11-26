@@ -30,6 +30,7 @@ impl StartupFailure {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Cause {
+    CatalogInUse,
     NewerCatalog,
     NoAccess,
     DiskFull,
@@ -41,6 +42,9 @@ fn classify(error: &(dyn std::error::Error + 'static)) -> Cause {
     use rusqlite::ErrorCode;
     use std::io::ErrorKind;
 
+    if matches!(error.downcast_ref::<crate::db::instance_lock::LockError>(), Some(crate::db::instance_lock::LockError::InUse)) {
+        return Cause::CatalogInUse;
+    }
     if let Some(db_error) = error.downcast_ref::<DbError>() {
         return match db_error {
             DbError::NewerSchema { .. } => Cause::NewerCatalog,
@@ -82,6 +86,10 @@ pub fn startup_error_message(stage: StartupStage, path: &Path, error: &(dyn std:
     let backups = crate::db::BACKUP_DIR_NAME;
 
     let (what_en, what_de) = match (stage, cause) {
+        (StartupStage::Catalog, Cause::CatalogInUse) => (
+            "Catalog is already in use (catalogInUse).",
+            "Katalog wird bereits verwendet (catalogInUse).",
+        ),
         (StartupStage::Catalog, Cause::NewerCatalog) => (
             "This catalog was created by a newer version of the app, so this version cannot open it.",
             "Dieser Katalog stammt von einer neueren Version der App, deshalb kann diese Version ihn nicht öffnen.",
@@ -101,6 +109,10 @@ pub fn startup_error_message(stage: StartupStage, path: &Path, error: &(dyn std:
     };
 
     let (todo_en, todo_de) = match cause {
+        Cause::CatalogInUse => (
+            "Close the other desktop app or web server using this catalog, then try again.".into(),
+            "Beende die andere Desktop-App oder den Webserver mit diesem Katalog und versuche es erneut.".into(),
+        ),
         Cause::NewerCatalog => (
             format!("Your data was not changed. Install the newer app version again, or use a backup copy from the \"{backups}\" folder next to catalog.db."),
             format!("Deine Daten wurden nicht verändert. Installiere die neuere App-Version wieder, oder verwende eine Sicherungskopie aus dem Ordner \"{backups}\" neben catalog.db."),
@@ -137,6 +149,12 @@ pub fn startup_error_message(stage: StartupStage, path: &Path, error: &(dyn std:
 pub fn report_and_exit(app: &tauri::AppHandle, failure: &StartupFailure) {
     log::error!(target: "startup", "startup failed at {:?} ({}): {}", failure.stage, failure.path.display(), failure.error);
     let message = startup_error_message(failure.stage, &failure.path, failure.error.as_ref());
+    eprintln!("{message}");
+    #[cfg(target_os = "linux")]
+    if show_with_linux_helper("3MF Katalog Manager", &message) {
+        app.exit(1);
+        return;
+    }
     let handle = app.clone();
     app.dialog()
         .message(message)
@@ -145,10 +163,39 @@ pub fn report_and_exit(app: &tauri::AppHandle, failure: &StartupFailure) {
         .show(move |_| handle.exit(1));
 }
 
+/// Command lines of the dialog tools tried in order. The dialog plugin needs `zenity`, which
+/// KDE installs often lack, so the message would otherwise only reach the log.
+#[cfg(target_os = "linux")]
+fn linux_dialog_helpers(title: &str, message: &str) -> Vec<(&'static str, Vec<String>)> {
+    let s = |v: &str| v.to_string();
+    vec![
+        ("zenity", vec![s("--error"), s("--no-markup"), s("--title"), s(title), s("--text"), s(message)]),
+        ("kdialog", vec![s("--title"), s(title), s("--error"), s(message)]),
+        ("xmessage", vec![s("-center"), s(message)]),
+    ]
+}
+
+/// True once one tool showed the message and was closed by the user.
+#[cfg(target_os = "linux")]
+fn show_with_linux_helper(title: &str, message: &str) -> bool {
+    linux_dialog_helpers(title, message).into_iter().any(|(program, args)| {
+        std::process::Command::new(program).args(args).status().is_ok_and(|status| status.success())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::{Error, ErrorKind};
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_helpers_cover_gnome_and_kde_and_pass_the_whole_message() {
+        let helpers = linux_dialog_helpers("T", "a <b> & c\nzweite Zeile");
+        let programs: Vec<_> = helpers.iter().map(|(p, _)| *p).collect();
+        assert_eq!(programs, ["zenity", "kdialog", "xmessage"]);
+        assert!(helpers.iter().all(|(_, args)| args.iter().any(|a| a == "a <b> & c\nzweite Zeile")));
+    }
     use std::path::PathBuf;
 
     fn assert_bilingual_with_path(text: &str, path: &Path) {
@@ -225,6 +272,21 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn locked_catalog_is_not_migrated_and_reports_its_code() {
+        let dir = temp_dir("catalog-lock");
+        let path = dir.join("catalog.db");
+        std::fs::write(&path, b"untouched catalog").unwrap();
+        let lock = crate::db::instance_lock::InstanceLock::acquire(&path, "server").unwrap();
+        let failure = crate::open_storage_at(&dir).expect_err("locked catalog");
+        assert_eq!(std::fs::read(&path).unwrap(), b"untouched catalog");
+        let text = startup_error_message(failure.stage, &failure.path, failure.error.as_ref());
+        assert!(text.contains("catalogInUse"));
+        assert!(text.contains("Katalog wird bereits verwendet"));
+        drop(lock);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

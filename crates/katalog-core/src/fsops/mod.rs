@@ -3,6 +3,10 @@
 use crate::upload_fs::Directory;
 use serde::{Deserialize, Serialize};
 mod context;
+mod desktop_trash;
+#[cfg(test)]
+mod desktop_trash_tests;
+pub use desktop_trash::DesktopTrashPurge;
 mod paths;
 use crate::fs_portable::names;
 pub use context::*;
@@ -36,6 +40,11 @@ mod companion_edit_tests;
 #[cfg(test)]
 mod companion_add_tests;
 pub use journal::*;
+mod restore;
+#[cfg(test)]
+mod restore_tests;
+#[cfg(test)]
+mod folder_trash_tests;
 mod operations;
 pub use operations::*;
 pub use companion_block::*;

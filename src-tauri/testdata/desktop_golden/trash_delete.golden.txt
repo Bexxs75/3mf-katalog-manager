@@ -1,0 +1,136 @@
+== steps ==
+[
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "delete a model with two companions"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": true,
+        "message": "fileInTrash"
+      }
+    },
+    "step": "delete again (already in the trash)"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "delete a model whose file is gone (only soft deleted)"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "<io error: already exists>"
+      }
+    },
+    "step": "delete with the trash name taken"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "database error: simulated failure of soft_delete_file"
+      }
+    },
+    "step": "delete with the DB update failing (file moved back, companion stays)"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "delete d again"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "keine Datei mit id 5 gefunden fuer soft_delete_file"
+      }
+    },
+    "step": "delete with a stale record (row already gone, file moved back)"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "delete a model outside every catalog folder"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "delete a model without extension"
+  },
+  {
+    "result": {
+      "err": {
+        "expected": false,
+        "message": "keine Datei mit id 9999 gefunden fuer soft_delete_file"
+      }
+    },
+    "step": "soft delete an unknown id"
+  },
+  {
+    "result": {
+      "ok": null
+    },
+    "step": "soft delete without moving anything"
+  }
+]
+
+== tables ==
+[folders] 1 row(s)
+  id=1 | name=cat | parent_id=NULL | path=<ROOT>/cat
+[files] 7 row(s)
+  id=1 | name=a.3mf | path=<ROOT>/cat/a.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=<ROOT>/trash/1-a.3mf | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=2 | name=gone.3mf | path=<ROOT>/cat/gone.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=3 | name=taken.3mf | path=<ROOT>/cat/taken.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=NULL | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=4 | name=d.3mf | path=<ROOT>/cat/d.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=<ROOT>/trash/4-d.3mf | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=6 | name=x.3mf | path=<ROOT>/loose/x.3mf | file_type=3mf | folder_id=NULL | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=<ROOT>/trash/6-x.3mf | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=7 | name=README | path=<ROOT>/cat/README | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=<ROOT>/trash/7-README | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+  id=8 | name=soft.3mf | path=<ROOT>/cat/soft.3mf | file_type=3mf | folder_id=1 | origin=local | sync_status=local-only | cloud_id=NULL | file_size_bytes=0 | dimension_x_mm=NULL | dimension_y_mm=NULL | dimension_z_mm=NULL | volume_cm3=NULL | object_count=NULL | thumbnail_png=NULL | imported_at=<TS> | file_modified_at=NULL | print_status=not_printed | last_viewed_at=NULL | creator=NULL | content_hash=NULL | render_snapshot_png=NULL | custom_image_png=NULL | source_url=NULL | license=NULL | queue_position=NULL | favorite=0 | plate_count=NULL | slice_info_json=NULL | plate_dimensions_json=NULL | deleted_at=<TS> | trash_path=NULL | source_platform=NULL | source_model_id=NULL | source_profile_id=NULL
+[companion_files] 3 row(s)
+  id=1 | file_id=1 | name=pic.png | path=<ROOT>/cat/a_extras/pic.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=<TS> | trash_path=<ROOT>/trash/companion-1-pic.png
+  id=2 | file_id=1 | name=second.png | path=<ROOT>/cat/a_extras/second.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=<TS> | trash_path=<ROOT>/trash/companion-2-second.png
+  id=3 | file_id=4 | name=d.png | path=<ROOT>/cat/d_extras/d.png | kind=image | size_bytes=16 | added_at=<TS> | deleted_at=<TS> | trash_path=<ROOT>/trash/companion-3-d.png
+[folder_trash_origin] 0 row(s)
+[bundles] 0 row(s)
+[bundle_members] 0 row(s)
+[disk_sync_known_copies] 0 row(s)
+[tags] 0 row(s)
+[file_tags] 0 row(s)
+[file_metadata] 0 row(s)
+[file_materials] 0 row(s)
+[collections] 0 row(s)
+[collection_files] 0 row(s)
+[print_log] 0 row(s)
+[file_print_info] 0 row(s)
+[file_print_plates] 0 row(s)
+[printers] 0 row(s)
+[printer_jobs] 0 row(s)
+[slicer_reports] 0 row(s)
+
+== tree ==
+cat/
+cat/soft.3mf (12 bytes)
+cat/stale.3mf (13 bytes)
+cat/taken.3mf (13 bytes)
+loose/
+outside/
+outside/d.png (16 bytes)
+outside/pic.png (16 bytes)
+outside/second.png (16 bytes)
+trash/
+trash/1-a.3mf (9 bytes)
+trash/3-taken.3mf (5 bytes)
+trash/4-d.3mf (9 bytes)
+trash/6-x.3mf (11 bytes)
+trash/7-README (10 bytes)
+trash/companion-1-pic.png (16 bytes)
+trash/companion-2-second.png (16 bytes)
+trash/companion-3-d.png (16 bytes)

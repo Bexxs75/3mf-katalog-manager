@@ -62,12 +62,15 @@ fn entries(dir: &std::path::Path) -> Vec<std::ffi::OsString> {
     let mut names: Vec<_> = std::fs::read_dir(dir)
         .unwrap()
         .map(|e| e.unwrap().file_name())
-        .filter(|n| n != "web-auth.json")
+        .filter(|n| n != "web-auth.json" && n != "catalog.db.lock")
         .collect();
     names.sort();
     names
 }
 async fn fixture(forced: bool, proxy: bool) -> Fixture {
+    fixture_with(forced, proxy, "10.0.0.0/24,fd00::/16").await
+}
+async fn fixture_with(forced: bool, proxy: bool, trusted: &str) -> Fixture {
     let dir = std::env::temp_dir().join(format!(
         "katalog-http-{}-{}",
         std::process::id(),
@@ -86,6 +89,7 @@ async fn fixture(forced: bool, proxy: bool) -> Fixture {
     let auth_path = dir.join("web-auth.json");
     password::write_auth(&auth_path, &auth).unwrap();
     let config = Config {
+        source_roots: vec![], printer_allow: Default::default(),
         slicer_links: None, file_ops: false, file_ops_daily_limit: 2000, companion_max_bytes: 1024 * 1024 * 1024, file_ops_ack: vec![], file_roots: vec![],
         upload: None,
         write: false,
@@ -96,6 +100,7 @@ async fn fixture(forced: bool, proxy: bool) -> Fixture {
         bind: "127.0.0.1:8080".parse().unwrap(),
         allowed_hosts: Some(vec!["localhost:8080".into(), "[::1]:8080".into()]),
         trust_proxy: proxy,
+        trusted_proxies: if proxy { katalog_server::config::TrustedProxies::parse(trusted).unwrap() } else { Default::default() },
         allow_no_auth: false,
         password: None,
         password_file: None,
@@ -130,12 +135,28 @@ async fn raw(
         req = req.header(*name, *value);
     }
     let mut req = req.body(body).unwrap();
-    req.extensions_mut().insert(ClientAddress(client.into()));
+    // Short names stand for fixed direct peers; the proxy fixtures trust 10.0.0.0/24.
+    let peer = match client {
+        "a" => "10.0.0.1",
+        "b" => "10.0.0.2",
+        "proxy" => "10.0.0.3",
+        "other" => "10.0.0.4",
+        other => other,
+    };
+    req.extensions_mut().insert(ClientAddress(peer.into()));
     let response = app.clone().oneshot(req).await.unwrap();
     let status = response.status().as_u16();
     let headers = response.headers().clone();
     assert_eq!(headers["x-content-type-options"], "nosniff");
     assert_eq!(headers["referrer-policy"], "no-referrer");
+    assert_eq!(headers["cross-origin-resource-policy"], "same-origin");
+    assert_eq!(headers["cross-origin-opener-policy"], "same-origin");
+    let policy = headers["permissions-policy"].to_str().unwrap();
+    for feature in ["camera", "microphone", "geolocation", "usb"] {
+        assert!(policy.contains(&format!("{feature}=()")), "{feature}");
+    }
+    // Counter-check: features the page uses are not switched off.
+    assert!(!policy.contains("clipboard") && !policy.contains("fullscreen"));
     assert_eq!(headers["content-security-policy"], "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self'");
     if path.starts_with("/api/") {
         assert_eq!(headers["cache-control"], "no-store");
@@ -687,4 +708,76 @@ async fn trusted_proxy_requires_valid_last_xff_and_accepts_socket_addresses() {
             200
         );
     }
+}
+
+fn xff(value: &str) -> [(&str, &str); 1] {
+    [("x-forwarded-for", value)]
+}
+async fn wrong_logins(f: &Fixture, peer: &str, forged: impl Fn(usize) -> String) {
+    for n in 0..5 {
+        let value = forged(n);
+        assert_eq!(call(&f.app, "/api/login", json!({"password":"wrong"}), &xff(&value), peer).await.0, 401);
+    }
+}
+
+#[tokio::test]
+async fn forwarded_headers_from_a_foreign_peer_are_ignored() {
+    let _lock = SERIAL.lock().await;
+    let f = fixture(false, true).await;
+    // No 400 for a missing header and no trust in a forged one: the peer's own address counts.
+    assert_eq!(raw(&f.app, "GET", "/api/health", Body::empty(), &[], "203.0.113.5").await.0, 200);
+    assert_eq!(raw(&f.app, "GET", "/api/health", Body::empty(), &xff("nonsense"), "203.0.113.5").await.0, 200);
+    // Rotating a forged X-Forwarded-For does not dodge the lockout of the real peer.
+    wrong_logins(&f, "203.0.113.5", |n| format!("192.0.2.{n}")).await;
+    let forged = "198.51.100.77";
+    assert_eq!(call(&f.app, "/api/login", json!({"password":PASSWORD}), &xff(forged), "203.0.113.5").await.0, 429);
+    // Counter-check: another real peer is unaffected, and a trusted proxy still maps to the forwarded client.
+    assert_eq!(call(&f.app, "/api/login", json!({"password":PASSWORD}), &xff(forged), "203.0.113.6").await.0, 200);
+    assert_eq!(call(&f.app, "/api/login", json!({"password":PASSWORD}), &xff(forged), "proxy").await.0, 200);
+    // X-Forwarded-Proto: https from a foreign peer must not switch on Secure cookies; from the proxy it does.
+    let h = [("x-forwarded-proto", "https")];
+    let (status, headers, _) = call(&f.app, "/api/login", json!({"password":PASSWORD}), &h, "203.0.113.7").await;
+    assert_eq!(status, 200);
+    let cookie = headers["set-cookie"].to_str().unwrap();
+    assert!(cookie.starts_with("katalog_session=") && !cookie.contains("Secure"));
+    let (_, headers, _) = call(&f.app, "/api/login", json!({"password":PASSWORD}), &h, "proxy").await;
+    assert!(headers["set-cookie"].to_str().unwrap().contains("__Host-katalog_session=") && headers["set-cookie"].to_str().unwrap().contains("Secure"));
+}
+
+#[tokio::test]
+async fn forwarded_chain_is_unwound_from_the_right_and_a_forged_left_entry_is_useless() {
+    let _lock = SERIAL.lock().await;
+    let f = fixture(false, true).await;
+    // Hops: forged entry, the real client, a second trusted proxy (10.0.0.9). The client is the
+    // first non-trusted address from the right, whatever stands further left.
+    wrong_logins(&f, "proxy", |n| format!("192.0.2.{n}, 198.51.100.1, 10.0.0.9")).await;
+    let chain = "203.0.113.200, 198.51.100.1, 10.0.0.9";
+    assert_eq!(call(&f.app, "/api/login", json!({"password":PASSWORD}), &xff(chain), "proxy").await.0, 429);
+    // Counter-check: a different real client behind the same proxies is not locked.
+    assert_eq!(call(&f.app, "/api/login", json!({"password":PASSWORD}), &xff("198.51.100.2, 10.0.0.9"), "proxy").await.0, 200);
+    // A trusted proxy as the last hop is not the client; the entry in front of it is.
+    let f = fixture(false, true).await;
+    wrong_logins(&f, "proxy", |_| "198.51.100.1, 10.0.0.8".into()).await;
+    assert_eq!(call(&f.app, "/api/login", json!({"password":PASSWORD}), &xff("198.51.100.1"), "proxy").await.0, 429);
+    // Garbage next to the proxy is rejected, even when something valid stands to its left.
+    let (status, _, body) = raw(&f.app, "GET", "/api/health", Body::empty(), &xff("198.51.100.1, garbage"), "proxy").await;
+    assert_eq!((status, body["message"].as_str()), (400, Some("webProxyHeaderInvalid")));
+    // Several header fields are read as one chain, in order.
+    let (status, _, _) = raw(&f.app, "GET", "/api/health", Body::empty(), &[("x-forwarded-for", "192.0.2.1"), ("x-forwarded-for", "198.51.100.1")], "proxy").await;
+    assert_eq!(status, 200);
+}
+
+#[tokio::test]
+async fn ipv6_proxies_and_clients_use_the_slash_64_lockout() {
+    let _lock = SERIAL.lock().await;
+    let f = fixture(false, true).await;
+    // fd00::/16 is trusted; the client behind it is an IPv6 address, grouped by /64.
+    wrong_logins(&f, "fd00::5", |n| format!("2001:db8:1:2::{}", n + 1)).await;
+    assert_eq!(call(&f.app, "/api/login", json!({"password":PASSWORD}), &xff("2001:db8:1:2:ffff::9"), "fd00::5").await.0, 429);
+    assert_eq!(call(&f.app, "/api/login", json!({"password":PASSWORD}), &xff("2001:db8:1:3::1"), "fd00::5").await.0, 200);
+    // A foreign IPv6 peer forging the proxy's address in the header gains nothing.
+    wrong_logins(&f, "2001:db8:ffff::bad", |_| "fd00::1".into()).await;
+    assert_eq!(call(&f.app, "/api/login", json!({"password":PASSWORD}), &xff("198.51.100.50"), "2001:db8:ffff::bad").await.0, 429);
+    // An IPv4-mapped peer address matches an IPv4 proxy entry.
+    assert_eq!(raw(&f.app, "GET", "/api/health", Body::empty(), &[], "::ffff:10.0.0.3").await.0, 400);
 }

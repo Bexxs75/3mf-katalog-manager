@@ -37,6 +37,17 @@ pub fn load_render_meshes(path: &Path) -> ReadResult<Vec<RenderMesh>> {
     load_geometry_with_obj_limit(path, MAX_PREVIEW_TRIANGLES, None)
 }
 
+/// The mesh list like [`load_render_meshes`], for the web: the file must lie below `allowed_roots`
+/// (the resolved path is the one that is opened) and `web_limits` replace the desktop parser budgets.
+pub fn load_render_meshes_with_limits(
+    path: &Path,
+    allowed_roots: Option<&[PathBuf]>,
+    web_limits: Option<crate::import::files::WebImportLimits>,
+) -> ReadResult<Vec<RenderMesh>> {
+    let target = resolve_within_roots(path, allowed_roots)?;
+    load_geometry_with_obj_limit(&target, MAX_PREVIEW_TRIANGLES, web_limits)
+}
+
 /// `web_limits` replaces the desktop 3MF parser budgets (2/3 GiB) with the web ones.
 pub fn get_model_geometry_with_limits(
     path: &Path,
@@ -45,6 +56,14 @@ pub fn get_model_geometry_with_limits(
 ) -> ReadResult<Vec<u8>> {
     let target = resolve_within_roots(path, allowed_roots)?;
     Ok(encode_render_meshes(&load_geometry_with_obj_limit(&target, MAX_PREVIEW_TRIANGLES, web_limits)?))
+}
+
+/// Opens a model file for a reader in another process (the STEP worker gets the handle, never the
+/// path): same root admission as the in-process readers, and only a regular file is accepted, so a
+/// FIFO or device cannot hang or flood the reader.
+pub fn open_geometry_file(path: &Path, allowed_roots: &[PathBuf]) -> ReadResult<std::fs::File> {
+    let target = resolve_within_roots(path, Some(allowed_roots))?;
+    crate::safe_file::open_regular(&target).map_err(geometry_io_error)
 }
 
 /// `None` keeps the path as it is. With roots, both roots and the target are canonicalized and the
@@ -326,7 +345,9 @@ fn load_geometry_with_obj_limit(
         .iter()
         .all(|m| m.indices.is_empty() || m.positions.is_empty())
     {
-        return Err(unreadable("Keine darstellbare Geometrie".into()));
+        // A file without any mesh (for example a sliced package that only carries G-code)
+        // is a property of the content, not a fault: it is logged as information.
+        return Err(ReadError::coded(ErrorCode::GeometryEmpty).with_code(Code::Unreadable));
     }
     Ok(meshes)
 }
@@ -828,5 +849,28 @@ endsolid x
             let error = get_model_geometry_with_limits(&path, None, Some(limits)).unwrap_err();
             assert_eq!(error.code, Some(Code::TooLarge));
         }
+    }
+
+    /// A package that carries no mesh (such as a sliced file with G-code only) is a fact
+    /// about the content: the viewer gets its code, the log gets no fault.
+    #[test]
+    fn a_package_without_any_mesh_is_an_expected_unreadable_error() {
+        use crate::read::GeometryErrorCode as Code;
+        use std::io::Write;
+        let dir = crate::unique_test_dir("viewer_no_mesh");
+        let path = dir.join("sliced.gcode.3mf");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("_rels/.rels", options).unwrap();
+        zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+        zip.start_file("3D/3dmodel.model", options).unwrap();
+        zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources/><build/></model>"#).unwrap();
+        zip.start_file("Metadata/plate_1.gcode", options).unwrap();
+        zip.write_all(b"G1 X0 Y0\n").unwrap();
+        zip.finish().unwrap();
+        let error = load_geometry(&path).unwrap_err();
+        assert_eq!(error.code, Some(Code::Unreadable));
+        assert!(error.expected, "a file without geometry must not be logged as a fault");
+        assert_eq!(error.message, ErrorCode::GeometryEmpty.as_str());
     }
 }

@@ -175,9 +175,12 @@ async fn download_headers_and_original_bytes() {
         ("x-content-type-options", "nosniff"),
         ("cache-control", "no-store"),
         ("accept-ranges", "bytes"),
+        ("cross-origin-resource-policy", "same-origin"),
+        ("cross-origin-opener-policy", "same-origin"),
     ] {
         assert_eq!(r.headers()[name], value);
     }
+    assert!(r.headers()["permissions-policy"].to_str().unwrap().contains("microphone=()"));
     assert_eq!(
         r.headers()["content-disposition"],
         "attachment; filename=\"M_del.step\"; filename*=UTF-8''M%C3%B6del.step"
@@ -502,8 +505,11 @@ async fn download_skips_unresolvable_roots() {
         ),
         (f.dir.join("missing").display().to_string(), 422),
     ] {
+        // The fixture app owns the lock of catalog.db, so each app gets its own copy.
+        let db = f.dir.join(format!("catalog-{status}.db"));
+        std::fs::copy(f.dir.join("catalog.db"), &db).unwrap();
         let config = Config::from_lookup(|k| match k {
-            "KATALOG_DB" => Some(f.dir.join("catalog.db").display().to_string()),
+            "KATALOG_DB" => Some(db.display().to_string()),
             "KATALOG_ROOTS" => Some(roots.clone()),
             "KATALOG_ALLOW_NO_AUTH" => Some("1".into()),
             _ => None,

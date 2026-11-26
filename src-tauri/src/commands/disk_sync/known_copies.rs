@@ -1,6 +1,7 @@
 //! The copies the disk sync remembers: how many there are, the list for the settings and
 //! forgetting them all. The sync itself reads and writes the table in `disk_sync.rs`.
 use super::*;
+use rusqlite::OptionalExtension;
 
 /// Rows sent to the webview at most; the number in the settings is the real total.
 const LIST_LIMIT: usize = 500;

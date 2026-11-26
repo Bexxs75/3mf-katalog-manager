@@ -3,13 +3,13 @@ import { useRowSelectionAria } from '../hooks/useRowSelectionAria';
 import { displayName } from '../lib/displayName';
 import { LicenseBadge } from './LicenseBadge';
 import { modelLicenseAriaLabel } from '../lib/licenses';
-import { Fragment, useMemo, useState, type RefObject } from 'react';
+import { Fragment, useMemo, useRef, useState, type RefObject } from 'react';
 import { useModelWindow } from '../hooks/useModelWindow';
 import { useDragThreshold } from '../hooks/useDragThreshold';
 import type { ModelFile } from '../types';
 import type { BundleCard, CardMember } from '../lib/bundles';
 import { bundleAggregate } from '../lib/bundles';
-import { cardNavId, cardSelectionState, cardToggleIds, isCardOpen } from '../lib/bundleCards';
+import { cardMemberIds, cardNavId, cardSelectionState, cardToggleIds, isCardOpen } from '../lib/bundleCards';
 import { useBundleCardsSettings, useCardItems } from '../hooks/BundleCardsContext';
 import { useBundleText, usePartOfText } from './BundleCardParts';
 import { Icon } from './Icon';
@@ -36,7 +36,7 @@ interface Props {
   selectedForBulk: Set<string>;
   onToggleBulkSelect: (id: string) => void;
   onToggleFavorite?: (id: string) => void;
-  onDragFileStart?: (id: string) => void;
+  onDragFileStart?: (id: string, memberIds?: readonly string[]) => void;
   // Accessible name of the grid; grouped views pass the folder name.
   label?: string;
 }
@@ -66,7 +66,9 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
   const window = useModelWindow({ ids, containerRef, gap: 0, fallbackHeight: 43, disabled: !windowed || unfoldedCards.length > 0 });
   const visible = items.slice(window.startIndex, window.endIndex);
   const memberRowCount = unfoldedCards.reduce((sum, card) => sum + card.visibleMembers.length, 0);
-  const fileDrag = useDragThreshold(onDragFileStart);
+  // A bundle row drags all its living members; the ids are remembered on mouse down for the start callback.
+  const dragMembers = useRef<readonly string[] | undefined>(undefined);
+  const fileDrag = useDragThreshold(onDragFileStart ? (id: string) => (dragMembers.current ? onDragFileStart(id, dragMembers.current) : onDragFileStart(id)) : undefined);
   const selectionAria = useRowSelectionAria(selectedId, selectedForBulk);
 
   const rowLabel = (m: ModelFile, partOf: string | null) => {
@@ -94,6 +96,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
           }}
           onMouseDown={(e) => {
             if (!canEdit || !onDragFileStart || readOnly) return;
+            dragMembers.current = undefined;
             fileDrag.begin(e, m.id);
           }}
           className={`group min-w-[680px] grid gap-2.5 items-center px-3 py-2 border-b border-[var(--line)] cursor-pointer ${
@@ -187,6 +190,11 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
           e.preventDefault();
           onSelect(card.title.id);
           onContextMenu?.(card.title.id, e.clientX, e.clientY, card.bundle.id);
+        }}
+        onMouseDown={(e) => {
+          if (!canEdit || !onDragFileStart || readOnly) return;
+          dragMembers.current = cardMemberIds(card);
+          fileDrag.begin(e, card.title.id);
         }}
         className={`group min-w-[680px] grid gap-2.5 items-center px-3 py-2 border-b border-[var(--line)] cursor-pointer ${
           open ? 'bg-[var(--accent-soft)]' : 'hover:bg-[var(--panel-2)]'

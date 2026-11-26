@@ -42,7 +42,8 @@ export function SettingActions({ id, value, label, onReset, disabled = false }: 
 }
 
 /** A searchable preference row, keeping its own description and control together. */
-export function SettingRow({ id, value, label, onReset, disabled, children }: Parameters<typeof SettingActions>[0] & { children: ReactNode }) {
+/** `keywords` are extra search terms that the visible texts do not contain (alternative names of a feature). */
+export function SettingRow({ id, value, label, onReset, disabled, keywords = '', children }: Parameters<typeof SettingActions>[0] & { keywords?: string; children: ReactNode }) {
   const tools = useContext(SettingsToolsContext);
   const { label: tabLabel } = useContext(SettingsTabContext);
   const section = useContext(SettingsSectionSearch);
@@ -51,12 +52,12 @@ export function SettingRow({ id, value, label, onReset, disabled, children }: Pa
   useLayoutEffect(() => {
     const node = ref.current;
     if (!node) return;
-    const update = () => setVisible(matchesSettingsSearch(tools?.query ?? '', tabLabel, section, label, node.querySelector('[data-setting-content]')?.textContent ?? ''));
+    const update = () => setVisible(matchesSettingsSearch(tools?.query ?? '', tabLabel, section, label, node.querySelector('[data-setting-content]')?.textContent ?? '', keywords));
     update();
     const observer = new MutationObserver(update);
     observer.observe(node, { childList: true, subtree: true, characterData: true });
     return () => observer.disconnect();
-  }, [tools?.query, tabLabel, section, label]);
+  }, [tools?.query, tabLabel, section, label, keywords]);
   return <div ref={ref} hidden={!visible} data-setting-row>
     <div data-setting-content>{children}</div>
     <SettingActions id={id} value={value} label={label} onReset={onReset} disabled={disabled} />

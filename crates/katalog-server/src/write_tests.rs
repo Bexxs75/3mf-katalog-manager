@@ -49,6 +49,10 @@ impl Fixture {
         };
         let session = new_session(&mut data, "test", 100).unwrap();
         let app = Arc::new(App {
+            restore: restore_upload::Runtime::default(),
+            events: Arc::default(),
+            printers: printer_service::Runtime::default(),
+            _instance_lock: None,
             fileops: None,
             fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),
             uploads:None,
@@ -138,12 +142,18 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
         n
     };
     let before = names();
-    assert_eq!(WRITE_COMMANDS.len(), 66);
-    assert_eq!(crate::write::ROUTE_WRITES, &["add_companion"]);
+    assert_eq!(WRITE_COMMANDS.iter().collect::<std::collections::HashSet<_>>().len(), WRITE_COMMANDS.len());
+    assert_eq!(crate::write::ROUTE_WRITES, &["add_companion", "backup_upload", "backup_discard", "backup_restore"]);
     assert!(!WRITE_COMMANDS.contains(&"add_companion"), "the upload is a route, not an invoke command");
-    assert_eq!(crate::READ_COMMANDS.len(), 34);
+    assert_eq!(crate::READ_COMMANDS.len(), 48);
     for cmd in WRITE_COMMANDS {
         assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
+    }
+    for (method, path) in [(Method::POST, "/api/backup/upload"), (Method::DELETE, "/api/backup/staging/unknown")] {
+        let mut req = f.request("", Body::empty(), Some(&f.session), Some("http://localhost:8080"), true);
+        *req.method_mut() = method;
+        *req.uri_mut() = path.parse().unwrap();
+        assert_eq!(router(f.app.clone()).oneshot(req).await.unwrap().status(), 404, "{path}");
     }
     assert_eq!(
         Sha256::digest(std::fs::read(&f.app.config.db_path).unwrap()),
@@ -1053,7 +1063,7 @@ async fn manager_http_all_writes_round_trip_and_rejected_commands_stay_closed() 
         "set_printer_job_failure",
         "pick_and_read_image",
     ] {
-        assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
+        assert_eq!(f.send(cmd, json!({})).await.status(), if printer_service::command(cmd) { 403 } else { 404 }, "{cmd}");
     }
 }
 #[tokio::test]
@@ -1061,7 +1071,7 @@ async fn manager_http_auth_csrf_and_nonimage_body_limits_cover_every_write() {
     let f = Fixture::new(true);
     // Selected by name, not by position: file operations and the commands named here are
     // exercised with their own bodies elsewhere.
-    let own_tests = ["remove_files_from_catalog", "start_upload_import", "discard_upload", "cancel_import", "set_favorite", "set_print_status", "add_tag"];
+    let own_tests = ["remove_files_from_catalog", "start_source_import", "start_upload_import", "discard_upload", "cancel_import", "set_favorite", "set_print_status", "add_tag"];
     for cmd in WRITE_COMMANDS.iter().filter(|c| !crate::write::FILE_OPS_COMMANDS.contains(c) && !own_tests.contains(c)) {
         for (session, csrf, status) in [(None, false, 401), (Some(&f.session), false, 403)] {
             let request = f.request(
@@ -2124,6 +2134,22 @@ mod custom_image_and_rescan_tests {
     }
 
     #[tokio::test]
+    async fn a_rescan_that_reads_longer_than_five_seconds_still_gets_the_free_lock() {
+        use crate::write::rescan_hook::SLOW_MS;
+        use std::sync::atomic::Ordering::SeqCst;
+        let f = Fixture::new(true);
+        let path = f.dir.join("slow-model.obj");
+        std::fs::write(&path, OBJ).unwrap();
+        f.catalog_path(&path);
+        // Longer than the five seconds the lock may take, well inside the write request's 30.
+        SLOW_MS.store(6_000, SeqCst);
+        let r = f.send("rescan_file_metadata", json!({"fileId":f.id})).await;
+        SLOW_MS.store(0, SeqCst);
+        assert_eq!(r.status(), 200);
+        assert!(f.stored_hash().is_some());
+    }
+
+    #[tokio::test]
     async fn jpeg_and_webp_covers_are_accepted_over_http() {
         let f = Fixture::new(true);
         for bytes in [&b"\xff\xd8\xff\xe0\x00\x10JFIF"[..], &b"RIFF\x04\x00\x00\x00WEBPVP8 "[..]] {
@@ -2268,7 +2294,7 @@ async fn bundle_commands_refuse_what_is_invalid_with_registered_codes() {
     let bundle = value(f.send("create_bundle", json!({"name":"Vase","kind":"parts","fileIds":[f.id, second]})).await).await;
     let cases = [
         ("create_bundle", json!({"name":"A","kind":"other","fileIds":[f.id, second]}), 422, json!({"message":"bundleKindInvalid","expected":true})),
-        ("create_bundle", json!({"name":"A","kind":"parts","fileIds":[f.id]}), 422, json!({"message":"bundleTooFewFiles","expected":true,"params":["2"]})),
+        ("create_bundle", json!({"name":"A","kind":"parts","fileIds":[]}), 422, json!({"message":"bundleTooFewFiles","expected":true,"params":["1"]})),
         ("create_bundle", json!({"name":"A","kind":"parts","fileIds":[f.id, f.id]}), 422, json!({"message":"bundleDuplicateFiles","expected":true})),
         ("create_bundle", json!({"name":" ","kind":"parts","fileIds":[f.id, second]}), 422, json!({"message":"bundleNameInvalid","expected":true,"params":["120"]})),
         ("create_bundle", json!({"name":"A","kind":"parts","fileIds":["999998","999999"]}), 422, json!({"message":"entryNotFound","expected":true})),
@@ -2429,4 +2455,382 @@ async fn tag_rename_and_merge_routes_return_affected_models() {
     let merged = f.send("merge_tags", json!({"source":"renamed", "target":"target"})).await;
     assert_eq!(merged.status(), StatusCode::OK);
     assert_eq!(value(merged).await, json!(1));
+}
+
+#[tokio::test]
+async fn startup_lock_precedes_auth_and_lives_with_router_clones() {
+    use katalog_core::db::instance_lock::{InstanceLock, LockError};
+    let f = Fixture::new(false);
+    let config = f.app.config.clone();
+    let owner = InstanceLock::acquire(&config.db_path, "desktop").unwrap();
+    let failure = initialize(config.clone()).await.expect_err("busy catalog");
+    assert!(failure.contains("catalogInUse"));
+    assert!(!config.auth_file.exists());
+    drop(owner);
+
+    let mut config = config;
+    config.allow_no_auth = true;
+    let app = initialize(config.clone()).await.unwrap();
+    let clone = app.clone();
+    drop(app);
+    assert!(matches!(InstanceLock::acquire(&config.db_path, "desktop"), Err(LockError::InUse)));
+    drop(clone);
+    drop(InstanceLock::acquire(&config.db_path, "desktop").unwrap());
+}
+
+async fn wait_for_barrier_writer(app: &App) {
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while app.geometry.barrier.snapshot().writers != 1 {
+            tokio::task::yield_now().await;
+        }
+    }).await.unwrap();
+}
+
+#[tokio::test]
+async fn maintenance_http_write_is_503_and_readers_obey_both_phases() {
+    let f = Fixture::new(true);
+    let barrier = &f.app.geometry.barrier;
+    let before = std::fs::read(&f.app.config.db_path).unwrap();
+    let window = barrier.enter_draining(std::time::Duration::from_secs(1)).await.unwrap();
+    let response = f.send("set_favorite", json!({"fileId":f.id,"favorite":true})).await;
+    assert_eq!(response.status(), 503);
+    let bytes = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+    assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap()["message"], "maintenance");
+    let (a, b) = tokio::join!(f.send("list_folders", json!({})), f.send("list_folders", json!({})));
+    assert_eq!((a.status().as_u16(), b.status().as_u16()), (200, 200));
+    let window = window.enter_exclusive(std::time::Duration::from_secs(1)).await.unwrap();
+    assert_eq!(f.send("list_folders", json!({})).await.status(), 503);
+    assert_eq!(std::fs::read(&f.app.config.db_path).unwrap(), before);
+    window.release();
+    assert_eq!(f.send("set_favorite", json!({"fileId":f.id,"favorite":true})).await.status(), 200);
+}
+
+#[tokio::test]
+async fn maintenance_waits_for_write_queued_on_worker() {
+    let f = Fixture::new(true);
+    let gate = f.app.writer.as_ref().unwrap();
+    let worker = gate.worker.clone().acquire_owned().await.unwrap();
+    let request = f.request("set_favorite", Body::from(json!({"fileId":f.id,"favorite":true}).to_string()), Some(&f.session), Some("http://localhost:8080"), true);
+    let app = f.app.clone();
+    let request = tokio::spawn(async move { router(app).oneshot(request).await.unwrap() });
+    wait_for_barrier_writer(&f.app).await;
+    let barrier = f.app.geometry.barrier.clone();
+    let drain = tokio::spawn(async move { barrier.enter_draining(std::time::Duration::from_secs(2)).await });
+    tokio::task::yield_now().await;
+    assert_eq!(f.app.geometry.barrier.snapshot().state, crate::barrier::State::Draining);
+    assert!(!drain.is_finished());
+    drop(worker);
+    assert_eq!(request.await.unwrap().status(), 200);
+    let window = drain.await.unwrap().unwrap();
+    assert!(f.favorite());
+    assert_eq!(f.app.geometry.barrier.snapshot().writers, 0);
+    window.release();
+}
+
+#[tokio::test]
+async fn maintenance_http_abort_keeps_blocking_writer_counted() {
+    let f = Fixture::new(true);
+    let conn = f.app.writer.as_ref().unwrap().conn.clone();
+    let (locked, ready) = tokio::sync::oneshot::channel();
+    let (unlock, released) = std::sync::mpsc::channel();
+    let holder = std::thread::spawn(move || {
+        let _conn = conn.lock().unwrap();
+        locked.send(()).unwrap();
+        released.recv().unwrap();
+    });
+    ready.await.unwrap();
+    let request = f.request("set_favorite", Body::from(json!({"fileId":f.id,"favorite":true}).to_string()), Some(&f.session), Some("http://localhost:8080"), true);
+    let app = f.app.clone();
+    let request = tokio::spawn(async move { router(app).oneshot(request).await.unwrap() });
+    wait_for_barrier_writer(&f.app).await;
+    request.abort();
+    assert!(request.await.unwrap_err().is_cancelled());
+    let barrier = &f.app.geometry.barrier;
+    assert_eq!(barrier.snapshot().writers, 1);
+    let before = std::fs::read(&f.app.config.db_path).unwrap();
+    assert_eq!(barrier.enter_draining(std::time::Duration::from_millis(10)).await.unwrap_err(), crate::barrier::BarrierError::Timeout);
+    assert_eq!(barrier.snapshot().state, crate::barrier::State::Open);
+    assert_eq!(std::fs::read(&f.app.config.db_path).unwrap(), before);
+    unlock.send(()).unwrap();
+    holder.join().unwrap();
+    let window = barrier.enter_draining(std::time::Duration::from_secs(2)).await.unwrap();
+    assert_eq!(barrier.snapshot().writers, 0);
+    assert!(f.favorite());
+    drop(window);
+}
+
+#[tokio::test]
+async fn maintenance_download_holds_reader_until_body_end_and_timeout_aborts_stream() {
+    let f = Fixture::new(true);
+    let path = f.dir.join("download.stl");
+    let content = vec![42u8; 128 * 1024];
+    std::fs::write(&path, &content).unwrap();
+    f.app.writer.as_ref().unwrap().conn.lock().unwrap().execute(
+        "UPDATE files SET path=?1 WHERE id=?2", rusqlite::params![path.to_str().unwrap(), f.id],
+    ).unwrap();
+    // Construct headers outside the future so their borrow lives through the await.
+    let headers = HeaderMap::new();
+    let response = crate::download::download(f.app.config.db_path.clone(), vec![f.dir.clone()], &f.id, &headers, f.app.downloads.clone(), &f.app.geometry.barrier).await;
+    assert_eq!(response.status(), 200);
+    let barrier = &f.app.geometry.barrier;
+    assert_eq!(barrier.snapshot().readers, 1);
+    let window = barrier.enter_draining(std::time::Duration::from_secs(1)).await.unwrap();
+    let bytes = axum::body::to_bytes(response.into_body(), content.len()).await.unwrap();
+    assert_eq!(Sha256::digest(&bytes), Sha256::digest(&content));
+    window.enter_exclusive(std::time::Duration::from_secs(1)).await.unwrap().release();
+    assert_eq!(barrier.snapshot().readers, 0);
+    let response = crate::download::download(f.app.config.db_path.clone(), vec![f.dir.clone()], &f.id, &headers, f.app.downloads.clone(), barrier).await;
+    let window = barrier.enter_draining(std::time::Duration::from_secs(1)).await.unwrap();
+    assert_eq!(window.enter_exclusive(std::time::Duration::from_millis(1)).await.unwrap_err(), crate::barrier::BarrierError::Timeout);
+    // An unpolled body still owns its guard; a timeout must not fake a drained catalog.
+    assert_eq!(barrier.snapshot().readers, 1);
+    assert!(axum::body::to_bytes(response.into_body(), content.len()).await.is_err());
+    assert_eq!(barrier.snapshot().readers, 0);
+    assert_eq!(std::fs::read(path).unwrap(), content);
+}
+
+#[tokio::test]
+async fn printer_service_empty_allowlist_and_readonly_fail_closed() {
+    let f = Fixture::new(true);
+    for command in ["get_printer_link_enabled", "sync_printers_now", "test_printer_connection"] {
+        let response = f.send(command, json!({})).await;
+        assert_eq!(response.status(), 403);
+        let body = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+        assert!(std::str::from_utf8(&body).unwrap().contains("printerAddressNotAllowed"));
+    }
+    let f = Fixture::new(false);
+    assert_eq!(f.send("sync_printers_now", json!({})).await.status(), 404);
+}
+
+#[tokio::test]
+async fn printer_service_rejects_non_allowlisted_public_loopback_and_metadata_addresses() {
+    let mut f = Fixture::new(true);
+    Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+        crate::config::PrinterAllow::parse("192.168.1.60,8.8.8.8,127.0.0.1,169.254.169.254,fd00:ec2::254").unwrap();
+    {
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        conn.execute("INSERT INTO printers(id,name,position) VALUES(1,'Test',0)", []).unwrap();
+        katalog_core::db::printer_link::set_printer_link_enabled(&conn, true).unwrap();
+    }
+    for address in ["192.168.1.61", "8.8.8.8", "127.0.0.1", "169.254.169.254", "fd00:ec2::254"] {
+        let response = f.send("test_printer_connection", json!({"printerId":"1","kind":"moonraker","address":address,"apiKey":"secret-do-not-return"})).await;
+        assert_eq!(response.status(), 200);
+        let body = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+        let body = std::str::from_utf8(&body).unwrap();
+        assert!(body.contains("address_not_allowed"), "{body}");
+        assert!(!body.contains("secret-do-not-return"));
+    }
+}
+
+#[tokio::test]
+async fn printer_connection_test_is_limited_per_session() {
+    let mut f = Fixture::new(true);
+    Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+        crate::config::PrinterAllow::parse("192.168.1.60").unwrap();
+    {
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        conn.execute("INSERT INTO printers(id,name,position) VALUES(1,'Test',0)", []).unwrap();
+        katalog_core::db::printer_link::set_printer_link_enabled(&conn, true).unwrap();
+    }
+    let args = json!({"printerId":"1","kind":"moonraker","address":"8.8.8.8"});
+    for _ in 0..10 {
+        assert_eq!(f.send("test_printer_connection", args.clone()).await.status(), 200);
+    }
+    let r = f.send("test_printer_connection", args.clone()).await;
+    assert_eq!(r.status(), 429);
+    assert_eq!(r.headers()["retry-after"], "60");
+    let body = axum::body::to_bytes(r.into_body(), 4096).await.unwrap();
+    assert!(std::str::from_utf8(&body).unwrap().contains("webTooManyRequests"));
+    f.time.0.fetch_add(60, Ordering::SeqCst);
+    assert_eq!(f.send("test_printer_connection", args).await.status(), 200);
+}
+
+#[tokio::test]
+async fn printer_service_commands_use_core_and_hide_stored_keys() {
+    let mut f = Fixture::new(true);
+    Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+        crate::config::PrinterAllow::parse("192.168.1.60").unwrap();
+    {
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        conn.execute("INSERT INTO printers(id,name,position) VALUES(1,'Test',0)", []).unwrap();
+        katalog_core::db::printer_link::save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60",
+            Some(&katalog_core::printer_link::api_key::ApiKey::parse("secret-do-not-return").unwrap()), "", "v1", 1.0).unwrap();
+    }
+    let response = f.send("list_printer_connections", json!({})).await;
+    let body = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+    let body = std::str::from_utf8(&body).unwrap();
+    assert!(body.contains("\"hasApiKey\":true"));
+    assert!(!body.contains("secret-do-not-return"));
+    assert_eq!(f.send("clear_printer_api_key", json!({"printerId":"1"})).await.status(), 200);
+    assert_eq!(f.send("remove_printer_connection", json!({"printerId":"1"})).await.status(), 200);
+}
+
+/// Printer reads share the manager-read limit: callers over it are turned away with a
+/// repeatable answer instead of each starting database work of its own.
+#[tokio::test]
+async fn printer_reads_over_the_manager_limit_are_rejected() {
+    let mut f = Fixture::new(true);
+    Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+        crate::config::PrinterAllow::parse("192.168.1.60").unwrap();
+    let held: Vec<_> = (0..4).map(|_| f.app.geometry.manager_read().unwrap()).collect();
+    for command in ["list_open_printer_jobs", "list_printer_connections", "get_printer_link_enabled"] {
+        let response = f.send(command, json!({})).await;
+        assert_eq!(response.status(), 503, "{command}");
+        assert_eq!(response.headers()["retry-after"], "1", "{command}");
+    }
+    drop(held);
+    assert_eq!(f.send("list_open_printer_jobs", json!({})).await.status(), 200);
+    assert!(f.app.geometry.manager_read().is_ok());
+}
+
+/// A request that disappears does not stop the blocking work it started, so the
+/// admission permit must stay held until that work has really run.
+#[test]
+fn printer_read_permit_outlives_a_dropped_request() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .max_blocking_threads(1)
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let mut f = Fixture::new(true);
+        Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+            crate::config::PrinterAllow::parse("192.168.1.60").unwrap();
+        let gate = f.app.geometry.clone();
+        // Occupy the only blocking thread so the printer read queues behind it.
+        let (release, wait) = std::sync::mpsc::channel::<()>();
+        let blocker = tokio::task::spawn_blocking(move || {
+            let _ = wait.recv();
+        });
+        let app = f.app.clone();
+        let request = tokio::spawn(async move {
+            printer_service::read(app, "list_open_printer_jobs".into(), json!({})).await
+        });
+        while gate.manager_reads_available() == 4 {
+            tokio::task::yield_now().await;
+        }
+        request.abort();
+        let _ = request.await;
+        // The HTTP side is gone, the queued work is not.
+        assert_eq!(gate.manager_reads_available(), 3);
+        release.send(()).unwrap();
+        blocker.await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while gate.manager_reads_available() != 4 {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+    });
+}
+
+#[tokio::test]
+async fn printer_service_events_work_without_uploads_and_barrier_blocks_writes() {
+    use http_body_util::BodyExt;
+    let mut f = Fixture::new(true);
+    Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+        crate::config::PrinterAllow::parse("192.168.1.60").unwrap();
+    let request = Request::builder().uri("/api/events")
+        .header("host", "localhost:8080")
+        .header("cookie", format!("katalog_session={}", f.session.token))
+        .body(Body::empty()).unwrap();
+    let response = router(f.app.clone()).oneshot(request).await.unwrap();
+    assert_eq!(response.status(), 200);
+    let mut body = response.into_body();
+    let initial = body.frame().await.unwrap().unwrap().into_data().unwrap();
+    assert!(std::str::from_utf8(&initial).unwrap().contains("import-progress"));
+    assert_eq!(f.send("sync_printers_now", json!({})).await.status(), 200);
+    let frame = body.frame().await.unwrap().unwrap().into_data().unwrap();
+    assert!(std::str::from_utf8(&frame).unwrap().contains("printer-jobs-changed"));
+    let window = f.app.geometry.barrier.enter_draining(std::time::Duration::from_secs(1)).await.unwrap();
+    assert_eq!(f.send("sync_printers_now", json!({})).await.status(), 503);
+    drop(window);
+}
+
+struct PrinterLogCapture(Mutex<Vec<String>>);
+impl log::Log for PrinterLogCapture {
+    fn enabled(&self, _: &log::Metadata<'_>) -> bool { true }
+    fn log(&self, record: &log::Record<'_>) {
+        self.0.lock().unwrap().push(format!("{}", record.args()));
+    }
+    fn flush(&self) {}
+}
+static PRINTER_LOG: PrinterLogCapture = PrinterLogCapture(Mutex::new(Vec::new()));
+
+#[tokio::test]
+async fn printer_service_api_key_never_appears_in_sync_logs_or_response() {
+    log::set_logger(&PRINTER_LOG).unwrap();
+    log::set_max_level(log::LevelFilter::Debug);
+    let mut f = Fixture::new(true);
+    Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+        crate::config::PrinterAllow::parse("192.168.1.60").unwrap();
+    let key = "printer-capture-secret-123";
+    {
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        conn.execute("INSERT INTO printers(id,name,position) VALUES(1,'Test',0)", []).unwrap();
+        katalog_core::db::printer_link::set_printer_link_enabled(&conn, true).unwrap();
+        katalog_core::db::printer_link::save_connection_after_test(&conn, 1, "moonraker", "192.168.1.61",
+            Some(&katalog_core::printer_link::api_key::ApiKey::parse(key).unwrap()), "", "v1", 1.0).unwrap();
+    }
+    let response = f.send("sync_printers_now", json!({})).await;
+    assert_eq!(response.status(), 200);
+    let body = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+    assert!(!std::str::from_utf8(&body).unwrap().contains(key));
+    let logs = PRINTER_LOG.0.lock().unwrap().join("\n");
+    assert!(logs.contains("address_not_allowed"), "the sync must actually produce captured diagnostics");
+    assert!(!logs.contains(key));
+}
+
+#[tokio::test]
+async fn printer_service_refuses_link_local_and_own_port_without_network_use() {
+    let mut f = Fixture::new(true);
+    let own = f.app.config.bind.port();
+    Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+        crate::config::PrinterAllow::parse("169.254.0.0/16,192.168.1.60").unwrap();
+    {
+        let conn = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        conn.execute("INSERT INTO printers(id,name,position) VALUES(1,'Test',0)", []).unwrap();
+        katalog_core::db::printer_link::set_printer_link_enabled(&conn, true).unwrap();
+    }
+    let secret = "dummy-key-0123456789abcdef0123456789";
+    let addresses = ["169.254.10.10", "169.254.169.254", "[::ffff:169.254.10.10]", "192.168.1.60:0"].map(str::to_string);
+    for address in addresses.into_iter().chain([format!("192.168.1.60:{own}")]) {
+        let started = std::time::Instant::now();
+        let response = f
+            .send("test_printer_connection", json!({"printerId": "1", "kind": "moonraker", "address": address, "apiKey": secret}))
+            .await;
+        assert_eq!(response.status(), 200, "{address}");
+        let body = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(text.contains("address_not_allowed"), "{address}: {text}");
+        assert!(!text.contains(secret), "{address}: key in answer");
+        assert!(started.elapsed() < std::time::Duration::from_secs(3), "{address} went to the network");
+    }
+}
+
+#[tokio::test]
+async fn printer_service_background_waits_then_publishes_and_respects_write_gate() {
+    use http_body_util::BodyExt;
+    let mut f = Fixture::new(true);
+    Arc::get_mut(&mut f.app).unwrap().config.printer_allow =
+        crate::config::PrinterAllow::parse("192.168.1.60").unwrap();
+    let request = Request::builder().uri("/api/events")
+        .header("host", "localhost:8080")
+        .header("cookie", format!("katalog_session={}", f.session.token))
+        .body(Body::empty()).unwrap();
+    let mut body = router(f.app.clone()).oneshot(request).await.unwrap().into_body();
+    body.frame().await.unwrap().unwrap();
+    printer_service::start(&f.app);
+    assert!(tokio::time::timeout(std::time::Duration::from_millis(100), body.frame()).await.is_err());
+    let frame = tokio::time::timeout(std::time::Duration::from_secs(12), body.frame()).await.unwrap().unwrap().unwrap().into_data().unwrap();
+    assert!(std::str::from_utf8(&frame).unwrap().contains("printer-jobs-changed"));
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        while f.app.geometry.barrier.snapshot().writers != 0
+            || f.app.writer.as_ref().unwrap().worker.available_permits() != 1
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        }
+    }).await.unwrap();
 }

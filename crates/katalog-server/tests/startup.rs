@@ -35,10 +35,9 @@ fn snapshot(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
         .unwrap()
         .map(|e| {
             let path = e.unwrap().path();
-            (
-                path.file_name().unwrap().into(),
-                Sha256::digest(fs::read(path).unwrap()).to_vec(),
-            )
+            // The lock file text (owner, pid, start time) changes on every start by design.
+            let bytes = if path.file_name().is_some_and(|n| n == "catalog.db.lock") { Vec::new() } else { fs::read(&path).unwrap() };
+            (path.file_name().unwrap().into(), Sha256::digest(bytes).to_vec())
         })
         .collect();
     files.sort();
@@ -86,8 +85,10 @@ async fn startup_bootstrap_existing_auth_and_invalid_auth_preserve_catalog() {
     drop(initialize(config.clone()).await.unwrap());
     let auth = password::read_auth(&config.auth_file).unwrap();
     assert!(auth.must_change);
+    // The generated start password is in a file next to the auth file, not in the log.
+    assert!(password::initial_password_path(&config.auth_file).is_file());
     let mut after = snapshot(&dir.0);
-    after.retain(|(name, _)| name != Path::new("web-auth.json"));
+    after.retain(|(name, _)| name != Path::new("web-auth.json") && name != Path::new("catalog.db.lock") && name != Path::new("web-initial-password.txt"));
     assert_eq!(after, before);
     let existing = snapshot(&dir.0);
     config.password = Some(UNUSED_BOOTSTRAP_PASSWORD.into());
@@ -111,6 +112,31 @@ fn cli_rejects_no_auth_with_proxy_before_opening_catalog() {
         .unwrap();
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("nicht mit KATALOG_TRUST_PROXY"));
+}
+
+#[test]
+fn cli_requires_a_valid_trusted_proxy_list_with_trust_proxy() {
+    let run = |list: Option<&str>| {
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_katalog-server"));
+        command
+            .env_clear()
+            .env("KATALOG_DB", "/unused/catalog.db")
+            .env("KATALOG_ROOTS", "/unused")
+            .env("KATALOG_TRUST_PROXY", "1");
+        if let Some(list) = list {
+            command.env("KATALOG_TRUSTED_PROXIES", list);
+        }
+        command.output().unwrap()
+    };
+    for list in [None, Some(""), Some("not-an-ip"), Some("0.0.0.0/0")] {
+        let output = run(list);
+        assert_eq!(output.status.code(), Some(1), "{list:?}");
+        assert!(String::from_utf8_lossy(&output.stderr).contains("KATALOG_TRUSTED_PROXIES"), "{list:?}");
+    }
+    // Counter-check: a valid list gets past this check (the unused catalog path fails later).
+    let output = run(Some("127.0.0.1,172.18.0.0/16,::1"));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("erfordert KATALOG_TRUSTED_PROXIES") && !stderr.contains("ungültiger Eintrag"), "{stderr}");
 }
 
 #[test]
@@ -151,7 +177,8 @@ fn help_explains_proxy_cookie_password_log_and_terminal_risks() {
         "anhängen oder überschreiben",
         "nicht nach Port getrennt",
         "Host-/Domainnamen",
-        "docker logs",
+        "steht nicht im Log",
+        "web-initial-password.txt",
         "Anmelden ändern",
         "Eingabe sichtbar",
         "neu gestartet",

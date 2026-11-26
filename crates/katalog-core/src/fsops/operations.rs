@@ -30,6 +30,14 @@ pub trait UploadLedger {
         Ok(None)
     }
 }
+/// What `remove_missing_entry` leaves of the row.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MissingRemoval {
+    /// `deleted_at` set, `trash_path` NULL (the desktop's state for a vanished file).
+    Trash,
+    /// The row is deleted for good.
+    Delete,
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct DeleteOutcome {
     pub kept_on_disk: bool,
@@ -159,7 +167,7 @@ fn touches_companions(intent: &Intent) -> bool {
         _ => true,
     }
 }
-fn commit(c: &mut Connection, intent: &Intent) -> Result<()> {
+pub(super) fn commit(c: &mut Connection, intent: &Intent) -> Result<()> {
     if intent.operation.is_companion_edit() {
         return super::companion_edit::commit_companion_edit(c, intent);
     }
@@ -187,6 +195,10 @@ fn commit(c: &mut Connection, intent: &Intent) -> Result<()> {
                 s.id
             ],
         )?;
+        if intent.restore.is_some() || intent.operation == Operation::Restore {
+            super::restore::relink(&tx, intent)?;
+            tx.execute("DELETE FROM folder_trash_origin WHERE file_id=?1", [s.id])?;
+        }
         apply_steps(&tx, &intent.companions)?;
     } else {
         // Explicit, so the rows do not depend on a connection having foreign keys on.
@@ -248,7 +260,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             Ok(_) => Ok(false),
         }
     }
-    fn check_source(&mut self, r: &Resolved, id: i64) -> Result<FileIdentity> {
+    pub(super) fn check_source(&mut self, r: &Resolved, id: i64) -> Result<FileIdentity> {
         let identity = FileIdentity::read(r)?;
         if identity.dev != self.context.roots[r.root].identity.dev {
             return Err(Error::CrossDevice);
@@ -262,7 +274,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         }
         Ok(identity)
     }
-    fn finish(&mut self, intent: &Intent) -> Result<()> {
+    pub(super) fn finish(&mut self, intent: &Intent) -> Result<()> {
         self.journal.phase(&intent.op_id, Phase::Committed)?;
         if self.ledger.detach(&[intent.before.id]).is_err() {
             return Err(self.journal.block(&intent.op_id));
@@ -277,6 +289,9 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         if carry.steps.iter().any(|s| s.source.is_some()) {
             return Err(Error::HasCompanions);
         }
+        let restore = (before.deleted_at.is_some()
+            && after.as_ref().is_some_and(|a| a.deleted_at.is_none()))
+            .then(RestoreParents::default);
         let intent = Intent {
             op_id: journal::op_id()?,
             operation: Operation::DbOnly,
@@ -292,6 +307,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             companions: carry.steps,
             extras_dir: None,
             companion_rows: carry.rows,
+            restore,
             companion_add: None,
         };
         self.journal.add(intent.clone())?;
@@ -303,7 +319,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         }
         self.finish(&intent)
     }
-    fn transfer(
+    pub(super) fn transfer(
         &mut self,
         before: FileState,
         mut after: FileState,
@@ -339,7 +355,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             None
         };
         let root = &self.context.roots[source.root];
-        let mut intent = Intent {
+        let intent = Intent {
             op_id,
             operation,
             phase: Phase::Prepared,
@@ -354,6 +370,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             companions: carry.steps,
             extras_dir: carry.extras_dir,
             companion_rows: carry.rows,
+            restore: None,
             companion_add: None,
         };
         let temp = intent
@@ -365,6 +382,16 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             })
             .transpose()?;
         self.journal.add(intent.clone())?;
+        self.execute_transfer(source, target, temp, intent)
+    }
+    pub(super) fn execute_transfer(
+        &mut self,
+        source: Resolved,
+        target: Resolved,
+        temp: Option<Resolved>,
+        mut intent: Intent,
+    ) -> Result<()> {
+        let identity = intent.identity.ok_or(Error::Internal)?;
         #[cfg(test)]
         super::tests::before_mutation();
         // Companions first, so that "model at its destination" implies "companions at theirs".
@@ -404,7 +431,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         }
         self.finish(&intent)
     }
-    fn transfer_failed(&mut self, i: &Intent, root: usize, e: Error) -> Result<()> {
+    pub(super) fn transfer_failed(&mut self, i: &Intent, root: usize, e: Error) -> Result<()> {
         if matches!(e, Error::RestartRequired) {
             return Err(self.journal.block(&i.op_id));
         }
@@ -488,7 +515,43 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         self.outcome.moved = carry.steps.len();
         self.transfer(before, after, source, target, Operation::Trash, carry)
     }
-    fn trash_source(&self, s: &FileState) -> Result<Resolved> {
+    /// Fails with `Changed` unless nothing is at `path` any more. Only `NotFound` counts as
+    /// missing; a file, link, special file or any other resolution error stops the caller.
+    pub(super) fn ensure_source_missing(&self, path: &str) -> Result<()> {
+        match self.context.resolve(path, Access::Source) {
+            Err(Error::NotFound) => Ok(()),
+            Err(e) => Err(e),
+            Ok(r) => match FileIdentity::read(&r) {
+                Err(Error::NotFound) => Ok(()),
+                Ok(_) => Err(Error::Changed),
+                Err(e) => Err(e),
+            },
+        }
+    }
+
+    /// Removes the entry of a model whose file is gone from the disk. Changes the database
+    /// only and never moves or deletes a file: `transfer` and `Operation::Trash` cannot be
+    /// reached from here. A file that is there (again) ends in `Changed` (the removal callers report it as "file is back").
+    pub fn remove_missing_entry(&mut self, id: i64, mode: MissingRemoval) -> Result<()> {
+        let before = self.active(id)?;
+        self.outcome = CarryOutcome::default();
+        let (after, carry) = match mode {
+            MissingRemoval::Trash => {
+                let deleted_at = chrono::Utc::now().to_rfc3339();
+                let carry = self.plan_trash(&before, &deleted_at)?;
+                let mut after = before.clone();
+                after.deleted_at = Some(deleted_at);
+                after.trash_path = None;
+                (Some(after), carry)
+            }
+            MissingRemoval::Delete => (None, self.plan_purge(&before)?),
+        };
+        #[cfg(test)]
+        super::tests::at_point("remove_missing_before_db_only", 0);
+        self.ensure_source_missing(&before.path)?;
+        self.db_only(before, after, carry)
+    }
+    pub(super) fn trash_source(&self, s: &FileState) -> Result<Resolved> {
         let (root, _) = self
             .context
             .locate(&s.path)
@@ -515,36 +578,20 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     pub fn restore_file(&mut self, id: i64) -> Result<()> {
         let before = self.trashed(id)?;
         self.outcome = CarryOutcome::default();
-        let carry = self.plan_restore(&before)?;
-        self.outcome = CarryOutcome {
-            moved: carry.steps.len(),
-            kept_in_trash: carry.kept_in_trash,
-        };
-        let mut after = before.clone();
-        after.deleted_at = None;
-        after.trash_path = None;
         if before.trash_path.is_none() {
+            let carry = self.plan_restore(&before)?;
+            let mut after = before.clone();
+            after.deleted_at = None;
+            after.trash_path = None;
+            self.outcome = CarryOutcome {
+                moved: carry.steps.len(),
+                kept_in_trash: carry.kept_in_trash,
+            };
             return self.db_only(before, Some(after), carry);
         }
-        let source = self.trash_source(&before)?;
-        let target = self
-            .context
-            .resolve(&before.path, Access::RestoreTarget)
-            .map_err(|e| {
-                if e == Error::NotFound {
-                    Error::PathUnresolvable
-                } else {
-                    e
-                }
-            })?;
-        // A taken model path is the common refusal; find it before any companion moves.
-        if carry.steps.iter().any(|s| s.source.is_some())
-            && !matches!(target.parent.entry_identity(&target.name), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
-        {
-            return Err(Error::Conflict);
-        }
-        self.transfer(before, after, source, target, Operation::Restore, carry)
+        self.restore_with_parents(before)
     }
+
     pub fn delete_file_permanently(&mut self, id: i64) -> Result<DeleteOutcome> {
         self.delete_permanently_before(id, None)
     }
@@ -555,6 +602,9 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     ) -> Result<DeleteOutcome> {
         let before = self.trashed(id)?;
         self.outcome = CarryOutcome::default();
+        if self.has_desktop_purge(&before)? {
+            return self.purge_desktop(before, None, cutoff);
+        }
         let carry = self.plan_purge(&before)?;
         if let Some(cutoff) = cutoff {
             let deleted = chrono::DateTime::parse_from_rfc3339(
@@ -609,6 +659,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             companions: carry.steps,
             extras_dir: None,
             companion_rows: carry.rows,
+            restore: None,
             companion_add: None,
         };
         self.journal.add(intent.clone())?;
@@ -941,6 +992,9 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         self.ready()
     }
     fn recover_one(&mut self, i: &Intent) -> Result<bool> {
+        if i.operation == Operation::PurgeDesktopTrash {
+            return self.recover_desktop_purge(i);
+        }
         if i.operation.is_companion_edit() {
             // The model stays as it is, so nothing is detached from the upload ledger.
             self.recover_companion_edit(i)?;
@@ -948,7 +1002,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         }
         let current = self.db.with_conn(|c| read_state(c, i.before.id))?;
         let db_before = current.as_ref() == Some(&i.before);
-        let db_after = current == i.after;
+        let db_after = self.db.with_conn(|c| super::restore::matches_after(c, i, current.as_ref()))?;
         if i.after.as_ref().is_some_and(|a| a.id != i.before.id) {
             return Err(Error::Changed);
         }

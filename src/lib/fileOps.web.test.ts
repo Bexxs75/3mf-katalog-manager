@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.hoisted(() => vi.stubEnv('VITE_TARGET', 'web'));
 import { authenticationFailed, canManageFiles, getSession, getSnapshot, login } from './webSession';
 import { invoke } from './transport';
-import { emptyWebTrash, fileOp, fileOpsBatch, subscribeFileOpsRefresh } from './fileOps';
+import { emptyWebTrash, fileOp, fileOpsBatch, subscribeFileOpsRefresh, trashFolderWeb } from './fileOps';
 let calls: {command:string; args:Record<string, unknown>}[];
 let enabled = true;
 let respond: (command:string) => Response;
@@ -74,4 +74,36 @@ it('does not replay a pending write after logout and a new login', async () => {
 it('resets file management on password change requirement and logout', async () => {
   authenticationFailed(403,'password_change_required'); expect(canManageFiles()).toBe(false); expect(getSnapshot().fileOps).toBe(false);
   await login('password'); expect(canManageFiles()).toBe(true); authenticationFailed(401); expect(canManageFiles()).toBe(false);
+});
+
+it('trashes a folder in blocks, pauses between them and reports the outcome in the desktop shape', async () => {
+  vi.useFakeTimers();
+  respond = command => Response.json(command === 'trash_folder_start' ? { token: 'folder-token', remaining: 202 }
+    : calls.filter(c => c.command === 'trash_folder_block').length === 1
+      ? { results: [{ id: '1', ok: true }, { id: '2', ok: false, kind: 'cross_device' }], remaining: 2 }
+      : { results: [{ id: '3', ok: true }, { id: '4', ok: false, kind: 'not_started' }], remaining: 1 });
+  respond = (inner => (command: string) => {
+    const blocks = calls.filter(c => c.command === 'trash_folder_block').length;
+    if (command === 'trash_folder_block' && blocks === 3) return Response.json({ results: [{ id: '5', ok: true }], remaining: 0, removedFolderCount: 3 });
+    return inner(command);
+  })(respond);
+  const progress = vi.fn(); const pending = trashFolderWeb('7', progress);
+  await vi.runAllTimersAsync();
+  const result = await pending;
+  expect(calls.map(c => c.command)).toEqual(['trash_folder_start', 'trash_folder_block', 'trash_folder_block', 'trash_folder_block']);
+  expect(calls[0].args).toEqual({ folderId: '7' }); expect(calls[1].args).toEqual({ token: 'folder-token' });
+  expect(result).toEqual({ trashedModelCount: 3, failed: [{ fileId: '2', path: '', reason: 'cross_device' }], removedFolderCount: 3, keptOnDisk: [] });
+  expect(progress.mock.calls.map(call => call.join('/'))).toEqual(['0/202', '200/202', '201/202', '202/202']);
+});
+it('stops a folder trash that makes no progress instead of repeating the block', async () => {
+  vi.useFakeTimers();
+  respond = command => Response.json(command === 'trash_folder_start' ? { token: 't', remaining: 1 } : { results: [{ id: '1', ok: false, kind: 'not_started' }], remaining: 1 });
+  const pending = trashFolderWeb('7'); const settled = expect(pending).rejects.toMatchObject({ kind: 'not_started' });
+  await vi.runAllTimersAsync(); await settled;
+  expect(calls.filter(c => c.command === 'trash_folder_block')).toHaveLength(1);
+});
+it('does not trash a folder without file management permission', async () => {
+  enabled = false; await getSession();
+  await expect(trashFolderWeb('7')).rejects.toMatchObject({ expected: true });
+  expect(calls).toHaveLength(0);
 });

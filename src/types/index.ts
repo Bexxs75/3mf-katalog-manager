@@ -158,6 +158,7 @@ export interface ModelFile {
   sourceProfileId: string | null;
   queuePosition: number | null;
   favorite: boolean;
+  desktopTrash?: boolean;
   deletedAt: string | null;
   /**
    * Set while this record only carries the list summary (fields such as
@@ -483,6 +484,14 @@ export interface Printer extends PrinterDetails {
 export interface CatalogIssues {
   orphaned: ModelFile[];
   duplicateGroups: ModelFile[][];
+  /** Web: the scan stopped at a limit, so the lists may be incomplete. */
+  truncated?: boolean;
+  /** Models the server could not check reliably; shown, never offered for removal. Not sent by every server version. */
+  unclear?: { path: string; root?: number; reason: string }[];
+  /** Web: folders verified gone as a whole (the chain up to them is made of real directories) with the ids of their listed missing models. Not sent by every server version. */
+  missingFolders?: { relativePath: string; root: number; models: string[] }[];
+  /** Web: display names of the roots (last path component), indexed like `unclear[].root`. Not sent by every server version. */
+  roots?: string[];
 }
 
 export interface Collection {
@@ -743,6 +752,32 @@ export interface SourceFolder {
   addedAt: string;
   /** The folder exists and still is the folder that was added. */
   reachable: boolean;
+  /** Web only: the configured server root and the path below it; null when the folder lies outside every root. */
+  rootIdx?: number | null;
+  rel?: string | null;
+}
+
+/** A source root the web server offers for browsing. */
+export interface SourceDirRoot { rootIdx: number; name: string }
+
+/** One child of a browsed server folder: a subfolder or a supported model file. */
+export interface SourceDirEntry {
+  /** Path below the root, `/`-separated. */
+  rel: string;
+  name: string;
+  directory: boolean;
+  /** Supported model files in the entry, subfolders included; a lower bound when `truncated`. */
+  fileCount: number;
+  truncated: boolean;
+}
+
+export interface SourceDirListing {
+  roots: SourceDirRoot[];
+  rootIdx?: number;
+  rel?: string;
+  entries: SourceDirEntry[];
+  /** The server stopped looking at its entry limit. */
+  truncated: boolean;
 }
 
 export interface SourceFile {
@@ -765,4 +800,32 @@ export interface SourceScan {
   truncated: boolean;
   /** The folder could not be checked (missing, moved, or no longer allowed). */
   unreachable: boolean;
+}
+
+/** A catalog row whose path lies outside the folders the web server serves. Never a usable path. */
+export interface BackupPathWarning {
+  table: string;
+  column: string;
+  row_id: number;
+  /** Shortened file name for display only. */
+  display_path: string;
+}
+
+/** What the server found in an uploaded catalog backup (field names as the server sends them). */
+export interface BackupRestoreReport {
+  schema_version: number;
+  migration_needed: boolean;
+  model_count: number;
+  folder_count: number;
+  collection_count: number;
+  source_folder_count: number;
+  path_warnings: BackupPathWarning[];
+  unreachable_source_folders: string[];
+}
+
+/** A checked backup waiting on the server. The token is the only handle to it. */
+export interface BackupPreview {
+  token: string;
+  report: BackupRestoreReport;
+  settingsIgnored: boolean;
 }

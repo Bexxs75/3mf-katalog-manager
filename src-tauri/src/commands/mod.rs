@@ -11,7 +11,11 @@ mod backup;
 mod imported_paths;
 mod bundles;
 mod collections;
+// The model trash now reaches the companion actions through the core (P7); the wrappers here
+// are only used by the companion tests now (kept so those tests stay unchanged).
+#[cfg_attr(not(test), allow(dead_code))]
 mod companions;
+mod fs_boundary;
 mod diagnostics;
 mod dropped_image;
 mod error;
@@ -77,7 +81,9 @@ pub use folder_trash::*;
 pub use updater::*;
 pub use upgrade_notice::*;
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+#[cfg(test)]
+use std::collections::BTreeMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -93,6 +99,9 @@ use crate::db::models::NewFile;
 use crate::db::{self, models::FileRecord};
 use crate::geometry::RenderMesh;
 use crate::slicers::detect_slicers;
+
+#[allow(unused_imports)] // Not every flow of the desktop uses each item.
+use fs_boundary::{move_file_with, Fs, RealFs};
 
 pub struct AppState {
     pub import_jobs: ImportJobs,
@@ -114,6 +123,7 @@ pub(crate) fn lock_db<'a>(state: &'a State<AppState>) -> CmdResult<std::sync::Mu
 /// Moves a file without ever overwriting an existing target, keeping its
 /// permissions and modification time (hard link first, copy as fallback; see
 /// `katalog_core::import::placement::move_file`).
+#[cfg(test)]
 pub(crate) fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
     katalog_core::import::placement::move_file(from, to)
 }
@@ -135,21 +145,6 @@ fn expand_sensitive_dirs(sensitive_dirs: &[PathBuf]) -> Vec<PathBuf> {
 }
 fn reject_if_sensitive_path_expanded(path: &Path, expanded_dirs: &[PathBuf]) -> CmdResult<()> {
     katalog_core::import::placement::reject_if_sensitive_path_expanded(path, expanded_dirs).map_err(Into::into)
-}
-/// Containment instead of a denylist: `path` must lie inside the trash. Otherwise
-/// a backup could set `trash_path = ~/Documents/important.pdf` with an old
-/// `deleted_at`, and `purge_expired_trash_on_startup` would delete the file on
-/// the next start. Both sides are resolved (`..`, symlinks).
-fn reject_if_outside_trash_dir(path: &Path, resolved_trash_dir: &Path) -> CmdResult<()> {
-    let resolved = resolve_path_for_sensitivity_check(path)?;
-    if resolved == resolved_trash_dir || !resolved.starts_with(resolved_trash_dir) {
-        return Err(format!(
-            "Papierkorb-Pfad liegt ausserhalb des Papierkorb-Verzeichnisses ({}) und wird abgelehnt",
-            resolved_trash_dir.display()
-        )
-        .into());
-    }
-    Ok(())
 }
 /// Resolves a path far enough that the prefix comparison in
 /// `reject_if_sensitive_path` can't be undermined by `..` components or symlinks.
@@ -179,6 +174,33 @@ pub(crate) fn unique_test_dir(name: &str) -> std::path::PathBuf {
     ));
     std::fs::create_dir_all(&dir).expect("create test dir");
     dir
+}
+
+/// A made-up absolute path in the spelling of the system the tests run on. Tests write
+/// such paths the Unix way; on Windows a path without a drive is not absolute, and code
+/// that stores or compares native paths expects the native separator. Anything that does
+/// not start with a single `/` (a relative path, a real path of this system) stays as it is.
+#[cfg(test)]
+pub(crate) fn native_test_path(path: &str) -> String {
+    if cfg!(windows) && path.starts_with('/') && !path.starts_with("//") {
+        format!("C:{}", path.replace('/', "\\"))
+    } else {
+        path.to_owned()
+    }
+}
+
+/// `base` followed by the `/`-separated `tail`, exactly as written. `Path::join` cannot
+/// build a path with `.` or `..` in it on Windows when `base` is a verbatim path
+/// (`\\?\C:\...`, which is what `canonicalize` returns there): it resolves them
+/// while joining.
+#[cfg(test)]
+pub(crate) fn join_unresolved(base: &std::path::Path, tail: &str) -> std::path::PathBuf {
+    let mut path = base.as_os_str().to_owned();
+    for part in tail.split('/') {
+        path.push(std::path::MAIN_SEPARATOR_STR);
+        path.push(part);
+    }
+    path.into()
 }
 
 /// Minimal `FileRecord` for tests, remaining fields with placeholders.
@@ -355,3 +377,27 @@ mod tests {
 
 mod ui_settings;
 pub use ui_settings::*;
+
+// Golden-Harness (nur Tests): Szenarien gegen den Desktop-Code, Snapshot unter testdata/desktop_golden/.
+#[cfg(test)]
+mod fs_fault_tests;
+#[cfg(test)]
+mod golden_harness;
+#[cfg(test)]
+mod golden_tests;
+#[cfg(test)]
+mod golden_companion_tests;
+#[cfg(test)]
+mod golden_trash_tests;
+#[cfg(test)]
+mod golden_rename_tests;
+#[cfg(test)]
+mod test_log;
+#[cfg(test)]
+mod rename_log_tests;
+#[cfg(test)]
+mod golden_move_tests;
+#[cfg(test)]
+mod golden_folder_tests;
+#[cfg(test)]
+mod folder_log_tests;

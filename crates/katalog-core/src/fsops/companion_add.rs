@@ -409,6 +409,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             companions: Vec::new(),
             extras_dir,
             companion_rows: rows,
+            restore: None,
             companion_add: Some(CompanionAdd {
                 file_id,
                 name,
