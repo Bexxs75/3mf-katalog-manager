@@ -98,9 +98,13 @@ mod tests {
         let root = tmp("slow");
         std::fs::write(root.join("keep.txt"), b"x").unwrap();
         let mut folders = vec![dto("1", &root.join("gone"))];
-        // A zero deadline cannot be met: the answer is discarded.
-        annotate_with(&mut folders, std::slice::from_ref(&root), disk_report::Limits::default(), Duration::ZERO);
+        // A zero deadline cannot be met: the walk is held at its first step until the answer was discarded.
+        static HOLD: Mutex<()> = Mutex::new(());
+        let hold = HOLD.lock().unwrap_or_else(|e| e.into_inner());
+        let hook: &'static (dyn Fn(&std::path::Path) + Sync) = &|_| drop(HOLD.lock().unwrap_or_else(|e| e.into_inner()));
+        annotate_with(&mut folders, std::slice::from_ref(&root), disk_report::Limits { walk_hook: Some(hook), ..Default::default() }, Duration::ZERO);
         assert!(!folders[0].missing);
+        drop(hold);
         for _ in 0..100 {
             if !RUNNING.load(Ordering::Acquire) {
                 return;

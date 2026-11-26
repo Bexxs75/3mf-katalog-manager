@@ -94,6 +94,9 @@ pub struct GeometryGate {
     /// Folders the comparison does not walk (the upload folder), like the preview.
     report_excluded: Vec<PathBuf>,
     report_timeout: std::time::Duration,
+    /// Tests only: the scan thread waits here until the sender is dropped or sends, so a timeout test needs no clock race.
+    #[cfg(test)]
+    scan_block: Option<Arc<std::sync::Mutex<std::sync::mpsc::Receiver<()>>>>,
     issue_limits: catalog_issues::IssueLimits,
     /// Result of the start comparison, written by `disk_start_sync`, read by `run_start_sync`.
     pub start_sync: Arc<StartSyncStore>,
@@ -113,6 +116,8 @@ impl Default for GeometryGate {
             report_limits: disk_report::Limits::default(),
             report_excluded: Vec::new(),
             report_timeout: DISK_REPORT_TIMEOUT,
+            #[cfg(test)]
+            scan_block: None,
             issue_limits: catalog_issues::IssueLimits {
                 max_orphaned: ISSUE_MAX_ORPHANED,
                 max_groups: ISSUE_MAX_GROUPS,
@@ -583,12 +588,18 @@ pub async fn invoke(
     if is_scan {
         let (limits, wait, excluded) = (gate.report_limits, gate.report_timeout, gate.report_excluded.clone());
         let (issue_limits, issues) = (gate.issue_limits, command == "scan_catalog_issues");
+        #[cfg(test)]
+        let scan_block = gate.scan_block.clone();
         let (tx, rx) = tokio::sync::oneshot::channel();
         // A thread of its own, not the blocking pool: the scan may never return. The permits
         // move into it on purpose and are released only when it ends, so a stuck scan keeps
         // blocking further ones (single flight, manager gate) instead of piling up new threads.
         let started = std::thread::Builder::new().name("disk-report".into()).spawn(move || {
             let _held = (catalog_guard, manager_permit, report_permit);
+            #[cfg(test)]
+            if let Some(release) = &scan_block {
+                let _ = release.lock().unwrap_or_else(|e| e.into_inner()).recv();
+            }
             let outcome = (|| -> Result<Value, ReadError> {
                 let conn = db::open_read_only(&db_path).map_err(ReadError::from)?;
                 if issues {
@@ -1128,10 +1139,14 @@ mod tests {
     #[tokio::test]
     async fn issue_scan_runs_on_its_own_thread_and_answers_a_timeout() {
         let i = issues_catalog();
-        let gate = Arc::new(GeometryGate { report_timeout: std::time::Duration::ZERO, ..Default::default() });
+        // The scan thread cannot start until `release` is dropped, so the timeout always fires first.
+        let (release, blocked) = std::sync::mpsc::channel::<()>();
+        let gate = Arc::new(GeometryGate { report_timeout: std::time::Duration::from_millis(50), scan_block: Some(Arc::new(std::sync::Mutex::new(blocked))), ..Default::default() });
         let r = scan(&i, gate.clone()).await;
         assert_eq!(r.status(), StatusCode::GATEWAY_TIMEOUT);
         assert!(String::from_utf8(body(r).await).unwrap().contains("\"rescanTimeout\""));
+        assert_eq!(gate.disk_reports.available_permits(), 0, "the stuck scan keeps its permit");
+        drop(release);
         // The permits stay with the thread until it ends, then come back.
         for _ in 0..100 {
             if gate.disk_reports.available_permits() == 1 && gate.barrier.snapshot().readers == 0 {
