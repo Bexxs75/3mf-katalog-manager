@@ -48,6 +48,11 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - The window remembers its size and its maximized state across restarts, and starts maximized under GNOME/Wayland as configured (the window was small there before).
 - On the web, after a backup has been restored, imports and the search for new files wait a moment (the message says so, HTTP 409) until the server has filled in the file checksums again; before, an import of the same source folder copied every known file a second time. Renaming or moving files during that time is safe.
 
+### Known limitations
+
+- On GNOME (Wayland), the window does not get keyboard focus after "Open" in the tray icon's menu: the compositor's focus-stealing prevention blocks it. The order of unminimize, show and set-focus is correct; a fix would need xdg-activation. Click into the window to continue.
+- In Settings, the header count and the "Changed" marker compare with the value when Settings was opened, not with the default.
+
 ## [0.18.7] - 2026-11-22
 
 ### Fixed
@@ -967,6 +972,11 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Eine Datei ohne darstellbare Geometrie (zum Beispiel ein gesliceltes Paket, das nur G-Code enthält) wird bei der Vorschau nicht mehr als Fehler protokolliert, sondern als Information.
 - Das Fenster merkt sich Größe und Maximiert-Zustand über Neustarts hinweg und startet unter GNOME/Wayland wie eingestellt maximiert (dort blieb es bisher klein).
 - Die Einstellungssuche findet die Option zum Minimieren in den Infobereich jetzt auch unter dem Begriff „Tray“.
+
+### Bekannte Einschränkungen
+
+- Unter GNOME (Wayland) bekommt das Fenster nach „Öffnen“ im Menü des Infobereich-Symbols keinen Tastaturfokus: Der Fokus-Stehlschutz des Compositors verhindert es. Die Reihenfolge unminimize, show und set_focus ist korrekt; ein Fix bräuchte xdg-activation. Klicke ins Fenster, um weiterzumachen.
+- In den Einstellungen vergleichen die Zahl in der Kopfzeile und die Markierung „Geändert“ mit dem Wert beim Öffnen der Einstellungen, nicht mit dem Standard.
 
 ## [0.18.7] - 2026-11-22
 

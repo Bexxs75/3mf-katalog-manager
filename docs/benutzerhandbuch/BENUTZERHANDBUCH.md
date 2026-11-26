@@ -1230,7 +1230,9 @@ Closing returns the focus to the gear.
   the setting says so; there is no new attempt until the next start. On Linux the icon needs support
   from your desktop (on GNOME, for example, the AppIndicator extension). Without it you cannot see the
   icon: start the program again to bring the window back, then switch the setting back to "Quit". The
-  choice is not offered in the container version.
+  choice is not offered in the container version. Known limitation: on GNOME (Wayland) the window gets
+  no keyboard focus after "Open" in the icon's menu, because the desktop's focus-stealing prevention
+  blocks it; click into the window to continue.
   The section also holds the start-menu switch on Linux (AppImage) where it is supported.
 
 ### Slicers & services
@@ -2899,7 +2901,9 @@ Rückfrage und dann die Einstellungen. Beim Schließen kehrt der Fokus zum Zahnr
   Versuch. Unter Linux braucht das Symbol Unterstützung deines Desktops (bei GNOME zum Beispiel die
   AppIndicator-Erweiterung). Ohne sie siehst du das Symbol nicht: Starte das Programm erneut, um das
   Fenster zurückzuholen, und stelle die Einstellung wieder auf „Beenden“. Im Container steht die Wahl
-  nicht zur Verfügung.
+  nicht zur Verfügung. Bekannte Einschränkung: Unter GNOME (Wayland) bekommt das Fenster nach „Öffnen“
+  im Menü des Symbols keinen Tastaturfokus, weil der Fokus-Stehlschutz des Desktops ihn verhindert;
+  klicke ins Fenster, um weiterzumachen.
   Der Abschnitt enthält unter Linux (AppImage) auch den Schalter für den Eintrag im Startmenü, wo er unterstützt wird.
 
 ### Slicer & Dienste
