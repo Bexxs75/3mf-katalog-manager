@@ -43,7 +43,7 @@ jobs:
       PREVIEW_FEATURES: ${{ inputs.preview && '--features preview' || '' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -57,7 +57,7 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
@@ -91,7 +91,7 @@ jobs:
           ./src-tauri/scripts/bundle-occt-dylibs-macos.sh "src-tauri/target/${{ matrix.target }}/release/bundle/macos/$APP_NAME.app"
 
       - name: Upload single-arch .app artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-app-${{ matrix.target }}
           path: src-tauri/target/${{ matrix.target }}/release/bundle/macos/${{ env.APP_NAME }}.app
@@ -110,16 +110,16 @@ jobs:
       PREVIEW_FEATURES: ${{ inputs.preview && '--features preview' || '' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download arm64 .app artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: macos-app-aarch64-apple-darwin
           path: arm64-app/${{ env.APP_NAME }}.app
 
       - name: Download x86_64 .app artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: macos-app-x86_64-apple-darwin
           path: x64-app/${{ env.APP_NAME }}.app
@@ -164,7 +164,7 @@ jobs:
         run: tar -czf "$RUNNER_TEMP/updater-step.app.tar.gz" -C "universal-app" "$APP_NAME.app"
 
       - name: Upload updater archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: 3mf-katalog-manager-macos-updater-step
           path: ${{ runner.temp }}/updater-step.app.tar.gz
@@ -179,7 +179,7 @@ jobs:
             "dmg-out/3MF Katalog Manager_universal-step.dmg"
 
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: 3mf-katalog-manager-macos-dmg-universal-step
           path: dmg-out/*.dmg
