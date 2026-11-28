@@ -53,7 +53,7 @@ From v0.16.0, there is one download per system: Windows `.msi`, macOS `.dmg` (In
 - **Collect new downloads** — set up source folders such as Downloads, check them for new models and move the chosen files into the catalog.
 - **Companion files and print bed check** — attach pictures, PDFs and text files to a model; the detail view shows whether a model fits each of your printers, and the "Fits on" filter narrows the catalog.
 - **Safe and local** — catalog backup as ZIP, archives extracted safely, Content Security Policy, no cloud.
-- **Docker (experimental)** — also available as a container with a browser desktop, in maintenance mode (bug and security fixes only): see [Docker in the wiki](https://wiki.3mfkatalog.de/en/docker/overview/).
+- **Docker & NAS** — also runs on a NAS or home server, as a container with a browser desktop or as the slim web variant; both receive the same updates as the desktop app: see [Docker in the wiki](https://wiki.3mfkatalog.de/en/docker/overview/).
 
 <details>
 <summary><b>All features in detail</b></summary>

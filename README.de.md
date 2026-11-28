@@ -53,7 +53,7 @@ Ab v0.16.0 gibt es einen Download pro System: Windows `.msi`, macOS `.dmg` (Inte
 - **Neue Downloads einsammeln** — Quellordner wie Downloads einrichten, auf neue Modelle prüfen und die gewählten Dateien in den Katalog verschieben.
 - **Begleitdateien und Druckbett-Prüfung** — Bilder, PDFs und Textdateien an ein Modell hängen; die Detailansicht zeigt, ob ein Modell auf jeden deiner Drucker passt, und der Filter „Passt auf“ grenzt den Katalog ein.
 - **Sicher und lokal** — Katalog-Sicherung als ZIP, Archive werden sicher entpackt, Content Security Policy, keine Cloud.
-- **Docker (experimentell)** — auch als Container mit Browser-Desktop erhältlich, im Wartungsmodus (nur Fehler- und Sicherheitskorrekturen): siehe [Docker im Wiki](https://wiki.3mfkatalog.de/docker/overview/).
+- **Docker & NAS** — läuft auch auf einem NAS oder Heimserver, als Container mit Browser-Desktop oder als schlanke Web-Variante; beide bekommen dieselben Updates wie die Desktop-App: siehe [Docker im Wiki](https://wiki.3mfkatalog.de/docker/overview/).
 
 <details>
 <summary><b>Alle Funktionen im Detail</b></summary>
